@@ -1,0 +1,11 @@
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.1.dtd" >
+<suite name="API Smoke">
+    <test name="QA API">
+
+        <parameter name="env" value="qa"/>
+
+        <classes>
+            <class name="com.selenium.testng.api.tests.UserApiTest"/>
+        </classes>
+    </test>
+</suite>
