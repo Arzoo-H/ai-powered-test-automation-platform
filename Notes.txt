@@ -1,4 +1,270 @@
-Question. 
+Question. Why not use String instead of StringWrite for throwable.printStackTrace()
+
+Because throwable.printStackTrace() has a return type of: void
+
+It prints the stack trace; it doesn't give you the text back.
+Like: System.out.println("Hello");
+
+StringWriter + PrintWriter is the mechanism Java provides to get the exception's printed stack trace into that String.
+
+============================================================================================
+Question. In ExecutionStore.java, why are we using Collections.synchronizedList()?
+
+This is because our framework supports:
+
+		Thread 1 → Test A
+		Thread 2 → Test B
+		Thread 3 → Test C
+		Thread 4 → Test D
+
+and all of them could execute: "ExecutionStore.add(executionResult);" at almost the same time.
+
+A normal 'new ArrayList<>()' is not thread-safe.
+
+We therefore use: Collections.synchronizedList(...)
+so additions are synchronized.
+
+Conceptually:
+
+Thread 1 ──┐
+Thread 2 ──┤
+Thread 3 ──┼──→ Thread-safe ExecutionStore
+Thread 4 ──┘
+
+============================================================================================
+Question. Why do we return a new ArrayList in getResults()?
+
+This part is important:
+
+	synchronized (executionResults) {
+	    return new ArrayList<>(executionResults);
+	}
+
+We don't want callers to receive our actual internal list.
+If we don't send a new one, somebody could do: ExecutionStore.getResults().clear();
+and potentially destroy our stored execution data.
+
+So, instead of returning actual ArrayList, we return a snapshot/copy.
+
+Internal Store
+    │
+    │ copy
+    ▼
+Caller
+
+The AI layer can read the results without owning the underlying collection.
+
+============================================================================================
+Question. Explain the role of synchronized. I have never used it so I don't know about it how it works or why or when or where to use?
+
+synchronized is an important Java concept because we're building a parallel test automation framework.
+
+1. What problem are we solving? Why do we need synchronized?
+
+Remember that our framework can run tests in parallel:
+
+	Thread 1 → LoginTest
+	Thread 2 → SearchTest
+	Thread 3 → CheckoutTest
+	Thread 4 → PaymentTest
+
+All of those threads can potentially interact with the same ExecutionStore. For example: ExecutionStore.add(executionResult);
+At the same time, another thread could be doing: ExecutionStore.getResults();
+So we have multiple threads accessing the same object.
+
+That's where synchronization becomes relevant.
+---------------------------------------------------------------
+2. What does synchronized mean?
+
+At a very basic level:
+	synchronized makes threads take turns when accessing a particular piece of shared code/state.
+
+Think of a single-room office with one key.
+
+              Office
+                🔑
+             /      \
+        Thread 1   Thread 2
+
+Only one thread can have the key at a time.
+
+If Thread 1 has it:
+		Thread 1 → 🔑 → enters
+		Thread 2 → waits
+
+When Thread 1 finishes:
+		Thread 1 → leaves → 🔑
+		         ↓
+		    Thread 2 enters
+
+That's roughly what synchronization does.
+---------------------------------------------------------------
+3. What exactly is being synchronized here?
+
+Look at:
+	synchronized (executionResults) {
+	    return new ArrayList<>(executionResults);
+	}
+
+The object inside the parentheses: "executionResults" is called the lock object (or monitor).
+
+We're effectively saying:
+"Before executing this block, acquire the lock associated with executionResults. If another thread already has that lock, wait."
+
+So:
+		Thread 1
+		   ↓
+		synchronized(executionResults)
+		   ↓
+		gets lock
+		   ↓
+		copies list
+		   ↓
+		releases lock
+
+While simultaneously:
+
+		Thread 2
+		   ↓
+		synchronized(executionResults)
+		   ↓
+		waits...
+		   ↓
+		Thread 1 releases lock
+		   ↓
+		gets lock
+		   ↓
+		copies list
+---------------------------------------------------------------
+4. Why do we need it specifically for getResults()?
+
+Below line is reading the list while copying it.
+	return new ArrayList<>(executionResults);
+
+Imagine the list contains:
+	[LoginResult, SearchResult, CheckoutResult]
+
+At the exact same time, another thread does:
+	executionResults.add(PaymentResult);
+
+Now one thread is iterating/copying the list while another thread is modifying it. That's unsafe.
+
+Conceptually:
+
+Thread 1                         Thread 2
+
+copy executionResults            add PaymentResult
+       │                              │
+       ├── LoginResult                │
+       ├── SearchResult               │
+       │                              ▼
+       │                         modifies list
+       ▼
+  inconsistent view
+
+Synchronization prevents that simultaneous access to the protected operation.
+---------------------------------------------------------------
+5. What happens if we remove synchronized?
+
+We could write:
+	public static List<ExecutionResult> getResults() {
+	    return new ArrayList<>(executionResults);
+	}
+
+It might work most of the time.
+
+But our tests might run:
+
+	Run 1 → works
+	Run 2 → works
+	Run 3 → works
+	...
+	Run 99 → works
+	Run 100 → weird failure
+
+Because the problem depends on timing.
+Thread 1 might be copying at exactly the same moment Thread 2 modifies the list.
+
+These bugs are often called race conditions. 
+(A race condition happens when the result depends on the unpredictable timing/order of multiple threads accessing shared data.)
+============================================================================================
+Question. Understanding the block of code in our file ExecutionStore
+public static List<ExecutionResult> getResults() {
+
+    synchronized (executionResults) {
+        return new ArrayList<>(executionResults);
+    }
+}
+
+a) executionResults is the lock
+
+When we say: synchronized (executionResults)
+
+we're saying:
+	"To enter this block, a thread must acquire the lock associated with executionResults."
+
+So imagine: executionResults 🔒
+
+Only one thread can hold that lock at a time.
+---------------------------------------------------------------
+b) About the .add() function
+The important thing is that the writer also has to use the same lock.
+
+Our add() is:
+	public static void add(ExecutionResult executionResult) {
+	
+	    if (executionResult != null) {
+	        executionResults.add(executionResult);
+	    }
+	}
+
+Because executionResults is a: Collections.synchronizedList(...), the add() operation internally acquires the list's lock.
+
+So conceptually:
+
+Thread 1                         Thread 2
+
+add(result)                      getResults()
+
+   ↓                                ↓
+
+acquire executionResults 🔒       tries to acquire 🔒
+   ↓                                ↓
+add result                         WAIT
+   ↓								↓
+release 🔓
+                                    ↓
+                             	 acquire 🔒
+                                    ↓
+                              	copy list
+                                    ↓
+                              	release 🔓
+
+That's the coordination.
+---------------------------------------------------------------
 
 
-==============================================
+============================================================================================
+Question. Why are we NOT using ThreadLocal for ExecutionStore?
+
+Because we want one collection for the entire test execution.
+Imagine:
+	Thread 1 → Login → Result 1
+	Thread 2 → Search → Result 2
+	Thread 3 → Checkout → Result 3
+
+We want:
+	ExecutionStore
+	[
+	    Result 1,
+	    Result 2,
+	    Result 3
+	]
+
+If we used ThreadLocal<List<ExecutionResult>>, we'd get:
+
+		Thread 1 → [Result 1]
+		Thread 2 → [Result 2]
+		Thread 3 → [Result 3]
+
+Then we'd have to combine them later.

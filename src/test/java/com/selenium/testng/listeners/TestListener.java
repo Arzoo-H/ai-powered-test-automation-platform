@@ -7,6 +7,9 @@ import org.testng.ITestResult;
 
 import com.aventstack.extentreports.*;
 import com.selenium.testng.context.TestContext;
+import com.selenium.testng.execution.ExecutionDataCollector;
+import com.selenium.testng.execution.ExecutionResult;
+import com.selenium.testng.execution.ExecutionStore;
 import com.selenium.testng.utils.ExtentManager;
 import com.selenium.testng.utils.LoggerUtil;
 import com.selenium.testng.utils.ScreenshotUtil;
@@ -18,12 +21,16 @@ public class TestListener implements ITestListener {
 
     private ExtentReports extent = ExtentManager.getInstance();
 
-    private ExtentTest test;
+    @Override
+    public void onStart(ITestContext context) {
 
+        ExecutionStore.clear();
+    }
+    
     @Override
     public void onTestStart(ITestResult result) {
 
-        test = extent.createTest(result.getMethod().getMethodName());
+    	ExtentTest test = extent.createTest(result.getMethod().getMethodName());
         // Assign this ExtentTest to a thread for one testcase/execution
         ExtentManager.setTest(test);
         
@@ -50,30 +57,53 @@ public class TestListener implements ITestListener {
     @Override
     public void onTestSuccess(ITestResult result) {
 
-        test.pass("Test Passed");
+    	ExtentManager.getTest().pass("Test Passed");
+    	
+    	// Convert TestNG execution data into a standardized result for AI analysis
+    	ExecutionResult executionResult = ExecutionDataCollector.collect(result, null);
+    	ExecutionStore.add(executionResult);
+
+    }
+    
+    @Override
+    public void onTestSkipped(ITestResult result) {
+
+    	// Because a skipped test can sometimes occur before your onTestStart() has successfully created ExtentTest
+    	// This prevents the reporting code from throwing a NullPointerException
+    	 if (ExtentManager.getTest() != null) {
+    	        ExtentManager.getTest().skip("Test Skipped");
+    	    }
+    	
+    	// Convert TestNG execution data into a standardized result for AI analysis
+    	ExecutionResult executionResult = ExecutionDataCollector.collect(result, null);
+    	ExecutionStore.add(executionResult);
 
     }
 
     @Override
     public void onTestFailure(ITestResult result) {
+    	
+    	String screenshotPath = null;
 
-        test.fail(result.getThrowable());
+    	ExtentManager.getTest().fail(result.getThrowable());
 		log.error("Test Failed: {}", result.getMethod().getMethodName(), result.getThrowable());
 
 		if (DriverFactory.getDriver() != null) {
-			String screenshotPath = ScreenshotUtil.captureScreenshot(DriverFactory.getDriver(),
+			screenshotPath = ScreenshotUtil.captureScreenshot(DriverFactory.getDriver(),
 					result.getMethod().getMethodName());
 
 			try {
-				test.addScreenCaptureFromPath(screenshotPath);
+				ExtentManager.getTest().addScreenCaptureFromPath(screenshotPath);
 				log.info("Screenshot saved: {}", screenshotPath);
 
 			} catch (Exception e) {
-				e.printStackTrace();
+				log.error("Unable to attach screenshot", e);
 			}
-
 		}
         
+		// Convert TestNG execution data into a standardized result for AI analysis
+		ExecutionResult executionResult = ExecutionDataCollector.collect(result, screenshotPath);
+		ExecutionStore.add(executionResult);
     }
 
     @Override

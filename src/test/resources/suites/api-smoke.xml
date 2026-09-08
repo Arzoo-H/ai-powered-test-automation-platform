@@ -5,7 +5,7 @@
         <parameter name="env" value="qa"/>
 
         <classes>
-            <class name="com.selenium.testng.api.tests.UserApiTest"/>
+            <class name="com.selenium.testng.framework.tests.ExecutionStoreTest"/>
         </classes>
     </test>
 </suite>
