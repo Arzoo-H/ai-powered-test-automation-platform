@@ -87,4 +87,11 @@ public class ConfigManager {
 	    return properties.getProperty(env + ".api.key");
 	}
 
+	public String getGeminiApiUrl() {
+	    return properties.getProperty("gemini.api.url");
+	}
+
+	public String getGeminiModel() {
+	    return properties.getProperty("gemini.model");
+	}
 }

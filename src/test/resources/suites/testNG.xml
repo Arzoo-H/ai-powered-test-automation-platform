@@ -26,7 +26,6 @@
 	</test>
 
 	<test name="API-QA">
-		<parameter name="browser" value="firefox" />
 		<classes>
 			<class name="com.selenium.testng.api.tests.UserApiTest" />
 		</classes>

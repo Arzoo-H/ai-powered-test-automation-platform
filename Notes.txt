@@ -268,3 +268,642 @@ If we used ThreadLocal<List<ExecutionResult>>, we'd get:
 		Thread 3 → [Result 3]
 
 Then we'd have to combine them later.
+
+============================================================================================
+Question. Why didn't we copy all fields from ExecutionResult into FailureAnalysis?
+
+That's intentional.
+ExecutionResult answers: What happened during the test?
+
+FailureAnalysis answers: What does the AI think happened and what should we do about it?
+
+Keeping those responsibilities separate is important.
+
+============================================================================================
+Question. What is the relationship among ExecutionResult, FailureAnalyzer and FailureAnalysis?
+
+Conceptually:
+
+		ExecutionResult
+		      │
+		      │ input
+		      ▼
+		FailureAnalyzer
+		      │
+		      │ contract: analyze()
+		      ▼
+		FailureAnalysis
+		      │
+		      │ output
+		      ▼
+
+And our eventual implementations can be:
+
+                 FailureAnalyzer
+                       │
+          ┌────────────┼────────────┐
+          ▼            ▼            ▼
+ GeminiFailure    OpenAIFailure   RuleBasedFailure
+ Analyzer         Analyzer        Analyzer
+
+
+For example,
+
+ExecutionResult
+────────────────────────────
+exceptionType = NoSuchElementException
+action        = click
+locator       = //button[@id='login']
+
+                ↓
+
+RuleBasedFailureAnalyzer
+
+                ↓
+
+FailureAnalysis
+────────────────────────────
+failureType    = LOCATOR
+rootCause      = ...
+confidence     = 0.90
+explanation    = ...
+possibleCauses = [...]
+suggestedAction= ...
+evidence       = [...]
+
+============================================================================================
+Question. RuleBasedFailureAnalyzer file already defines the failures and possible reasons. Why is AI needed?
+
+Our rule engine answers: WHAT TYPE OF FAILURE?
+AI attempts to answer: WHY DID IT LIKELY HAPPEN?
+
+Here are several realistic examples.
+
+----------------------------------------------------
+Example 1 — NoSuchElementException
+	What our rule can tell us
+	
+	Exception: NoSuchElementException
+	Locator: #login-button
+	
+	Rule-based:
+	
+		Failure Type: LOCATOR
+		Root Cause: Element could not be located.
+	
+	That's correct—but not very deep.
+	
+	Now give AI more context
+		Test: validLogin
+		
+		Step 1: Open /login
+		Step 2: Enter username
+		Step 3: Enter password
+		Step 4: Click #login-button
+		
+		Failure:
+		NoSuchElementException
+		
+		Browser: Chrome
+		Environment: QA
+		
+		Previous 20 executions:
+		18 passed
+		2 failed
+		
+		Current page HTML:
+		<button id="sign-in-button">Sign In</button>
+	
+	AI can reason:
+	
+		The locator #login-button is likely outdated.
+		
+		The current DOM contains #sign-in-button, which appears
+		to represent the same UI element.
+		
+		Likely Root Cause:
+		UI locator became stale after a DOM/attribute change.
+		
+		Suggested Action:
+		Update the locator from #login-button to #sign-in-button,
+		after confirming the change is intentional.
+	
+	Why is this AI useful?
+	
+	Because our rule knows: NoSuchElementException = locator-related
+	
+	But it doesn't know:
+	
+		#login-button → #sign-in-button
+	
+	unless we explicitly program that knowledge.
+
+----------------------------------------------------
+Example 2 — Flaky test detection
+
+	Suppose: 
+	
+		Test: verifySearchResults
+		
+		History:
+		
+		Run 1 → PASS
+		Run 2 → PASS
+		Run 3 → FAIL
+		Run 4 → PASS
+		Run 5 → PASS
+		Run 6 → FAIL
+		Run 7 → PASS
+		Run 8 → FAIL
+		Run 9 → PASS
+		Run 10 → PASS
+		
+	AI sees:
+	
+		Failure:
+		TimeoutException
+		
+		Failed Step:
+		Wait for search results
+		
+		Average successful execution:
+		2.1 seconds
+		
+		Failed executions:
+		9.8 sec
+		9.7 sec
+		9.9 sec
+	
+	AI could report:
+	
+		Potential Flaky Test
+		
+		The test passes most executions but intermittently approaches
+		the 10-second timeout.
+		
+		Likely Cause:
+		Variable response/rendering time rather than a consistently
+		incorrect locator.
+		
+		Recommendation:
+		Investigate search API latency and frontend rendering timing
+		before simply increasing the timeout.
+	
+----------------------------------------------------
+Example 3 — Assertion failure
+
+	Suppose:
+	
+		Expected: Order status = "Confirmed"
+		Actual: Order status = "Pending"
+	
+	Rule-based:
+	
+		ASSERTION
+		
+		Actual result does not match expected result.
+	
+	But AI gets:
+	
+		Test:
+		verifyOrderAfterPayment
+		
+		Expected:
+		Confirmed
+		
+		Actual:
+		Pending
+		
+		Previous steps:
+		1. Create order
+		2. Complete payment
+		3. Navigate to order
+		4. Verify status
+		
+		API:
+		POST /payment → 200 OK
+		
+		GET /orders/123 → status = Pending
+		
+		Previous executions:
+		Yesterday → Confirmed
+		Today → Pending
+		
+		Environment:
+		QA
+	
+	AI might reason:
+	
+		Likely Root Cause:
+		The payment request succeeds, but order status propagation
+		appears delayed.
+		
+		The failure occurs immediately after payment and the order
+		API still reports Pending.
+		
+		Possible Cause:
+		Asynchronous processing/event propagation delay.
+		
+		Suggested Investigation:
+		Check the event/message responsible for transitioning
+		the order from Pending → Confirmed.
+	
+	That's much more useful to a QA engineer.
+
+----------------------------------------------------
+Example 4 — Same exception, completely different causes
+
+This is probably the most important example.
+
+	Imagine two tests both produce: TimeoutException
+	Test A]
+		Wait for login button
+		Timeout: 10 sec
+		
+		Page never loaded.
+		
+		Network:
+		GET /login → 12 sec
+	
+	AI:
+	
+		Likely slow page/API response.
+	
+	Test B]
+		Wait for login button
+		Timeout: 10 sec
+		
+		Page loaded in 1.2 sec.
+		
+		DOM:
+		Button exists, but locator targets old ID.
+	
+	AI:
+	
+		Likely incorrect/outdated locator.
+	
+	Test C]
+		Wait for login button
+		Timeout: 10 sec
+		
+		Page loaded.
+		Button exists.
+		Button appears after ~15 sec.
+	
+	AI:
+	
+		Application rendering is slower than the configured synchronization timeout.
+	
+	Test D]
+		Wait for login button
+		Timeout: 10 sec
+		
+		Page loaded.
+		Button exists.
+		JavaScript console shows an exception.
+	
+	AI:
+	
+		UI rendering may have failed because of a frontend JavaScript error.
+	
+	
+	
+	Same: TimeoutException. But potentially four different root causes.
+	Our rule-based analyzer can classify all four as: TIMEOUT
+	
+	AI can investigate the context around the timeout.
+	
+----------------------------------------------------
+Example 5 — Environment problem
+	
+	Imagine 50 tests run.
+	
+	Results:
+	
+	Chrome QA       48 PASS   2 FAIL
+	Firefox QA      49 PASS   1 FAIL
+	Chrome Stage    50 PASS
+	Firefox Stage   50 PASS
+	
+	The two Chrome QA failures: TimeoutException
+	
+	And both happened while accessing: https://qa.myapp.com/api/products
+	
+	AI could identify a pattern:
+	
+		Observation:
+		Failures are concentrated in the QA environment.
+		
+		Chrome QA:
+		2 failures
+		
+		Firefox QA:
+		1 failure
+		
+		Stage:
+		0 failures
+		
+		All failures involve the product API.
+		
+		Likely Root Cause:
+		QA environment instability or degraded product-service
+		response rather than a test automation defect.
+
+----------------------------------------------------
+	That's something you could program with rules, but imagine trying to hard-code every possible relationship between:
+	
+		environment
+		browser
+		test
+		API
+		exception
+		execution history
+		timing
+		previous failures
+	
+	That's where AI becomes interesting.
+
+============================================================================================
+Question. How do we setup Gemini API key in environment?
+
+Adding API key in .zshrc is not the right place to solve the Eclipse/Finder problem on macOS. 
+Your Terminal sees the variable because zsh loads .zshrc, 
+but Eclipse launched from the Dock/Finder is not a child process of that shell, 
+so it doesn't inherit the variable. Apple documents this inheritance behavior explicitly.
+
+For still using the setup while we put the key in .zshrc is to: 
+simply launch Eclipse from Terminal: open -a Eclipse
+Then Eclipse inherits the Terminal's environment.
+
+OR 
+
+We use launchctl - a macOS command-line tool for interacting with launchd, which is macOS's system/service manager.
+
+Why adding environment to launchctl instead of .zshrc matters?
+
+	=> Right now we essentially have:
+	
+		.zshrc
+		   ↓
+		zsh (your Terminal)
+		   ↓
+		GEMINI_API_KEY ✅
+	
+	That's why: echo $GEMINI_API_KEY works. 
+	
+	
+	=> But Eclipse, when launched from the Dock/Application folder, is more like:
+	
+		macOS
+		  ↓
+		launchd
+		  ↓
+		Eclipse
+	
+	It doesn't go through your interactive zsh session, so Eclipse never sees the variable you exported in .zshrc.
+	launchctl lets us communicate with that launchd environment.
+
+============================================================================================
+Question. Is command "launchctl setenv GEMINI_API_KEY "$GEMINI_API_KEY"" a persistent one? 
+After the computer restarts do we still get env variable?
+
+launchctl setenv itself is session-only; macOS's supported mechanism for persistent per-user startup tasks 
+is a LaunchAgent under ~/Library/LaunchAgents.
+To make it persistent, we need to create a script where,
+key must already exists in .zshrc, so that we can create a LaunchAgent that reads that value and puts it into launchd whenever we log in.
+
+OR
+
+If you put the in GEMINI_API_KEY in .zshrc, you can simply launch Eclipse from Terminal: open -a Eclipse
+Then Eclipse inherits the Terminal's environment.
+
+============================================================================================
+Question. Explanation on using structure interface based creating objects via classes implementing the interface
+"AIClient aiClient = new GeminiAIClient();"
+
+Think of your Selenium example -
+	
+	When you write: WebDriver driver = new ChromeDriver();
+
+you're essentially saying: "I need a driver capable of performing WebDriver operations. Today I'm using Chrome."
+
+If tomorrow you want Firefox:
+	WebDriver driver = new FirefoxDriver();
+
+Your test code can remain:
+
+	driver.get(url);
+	driver.findElement(...);
+	driver.quit();
+
+It doesn't need to become: FirefoxDriver driver = ... everywhere.
+This is one of the biggest benefits of interfaces.
+-------------------------------------------------------
+Now, our framework has:
+
+	public interface AIClient {
+	    String generate(String prompt);
+	}
+
+Implementations:
+
+             AIClient
+            /        \
+           /          \
+GeminiAIClient     OpenAIClient
+
+Our analyzer:
+
+public class GeminiFailureAnalyzer {
+
+    private AIClient aiClient;
+
+    public GeminiFailureAnalyzer(AIClient aiClient) {
+        this.aiClient = aiClient;
+    }
+
+    public FailureAnalysis analyze(ExecutionResult result) {
+        String response = aiClient.generate(...);
+        ...
+    }
+}
+
+Now the analyzer isn't tightly coupled to Gemini.
+
+We can inject: new GeminiAIClient() or new OpenAIClient() or even new MockAIClient()
+And the analyzer doesn't care.
+
+That's polymorphism + abstraction + dependency injection working together.
+-------------------------------------------------------
+1. Abstraction — "What do I need?"
+
+	First, you define an interface:
+	
+		public interface AIClient {
+		    String generate(String prompt);
+		}
+	
+	This says: Any AI client must provide a generate() method.
+	It does not say how generate() works.
+	
+	For example:
+	
+	public class GeminiAIClient implements AIClient {
+	
+	    @Override
+	    public String generate(String prompt) {
+	        // Call Gemini API
+	    }
+	}
+	
+	And perhaps:
+	
+	public class OpenAIClient implements AIClient {
+	
+	    @Override
+	    public String generate(String prompt) {
+	        // Call OpenAI API
+	    }
+	}
+	
+	The interface is the abstraction.
+	So abstraction is basically: Expose what something can do, hide how it does it.
+
+2. Polymorphism — "Which implementation will actually run?"
+
+	Now look at: AIClient aiClient = new GeminiAIClient();
+	The variable is an AIClient, but the actual object is a GeminiAIClient.
+	
+	That's where polymorphism comes in.
+	
+	Suppose:
+		AIClient aiClient = new GeminiAIClient();
+		String response = aiClient.generate(prompt);
+	
+	Java sees:
+	
+		aiClient
+		   ↓
+		actual object
+		   ↓
+		GeminiAIClient
+		   ↓
+		generate()
+	
+	So Gemini's implementation runs.
+	
+	But we could do:
+		AIClient aiClient = new OpenAIClient();
+	and:
+		aiClient.generate(prompt);
+	would now execute OpenAI's implementation.
+	
+	The calling code hasn't changed.
+	That's polymorphism:
+	The same interface/method call can behave differently depending on the actual object behind the reference.
+
+3. Dependency Injection — "Who gives me the object?"
+
+	Instead of doing this inside it:
+	
+		public class GeminiFailureAnalyzer {
+		
+		    *private AIClient aiClient = new GeminiAIClient();
+		
+		    public FailureAnalysis analyze(ExecutionResult result) {
+		        String response = aiClient.generate(...);
+		        ...
+		    }
+		}
+	
+	we do:
+	
+		public class GeminiFailureAnalyzer {
+		
+		    private AIClient aiClient;
+		
+		    *public GeminiFailureAnalyzer(AIClient aiClient) {
+		        this.aiClient = aiClient;
+		    }
+		
+		    public FailureAnalysis analyze(ExecutionResult result) {
+		        String response = aiClient.generate(...);
+		        ...
+		    }
+		}
+	
+	Now GeminiFailureAnalyzer says: "I need an AIClient. I don't care which one. Give me one."
+	
+	Then somewhere else:
+		AIClient aiClient = new GeminiAIClient();
+		GeminiFailureAnalyzer analyzer = new GeminiFailureAnalyzer(aiClient);
+	
+	We injected the dependency.
+	
+	The dependency is: AIClient
+	And we're injecting: GeminiAIClient through the constructor.
+	
+	That's constructor dependency injection.
+============================================================================================
+Question. How is TestListener (storing the execution results) and Analysis flow related?
+
+   Tests
+     │
+     ▼
+TestListener
+     │
+     │ onFinish()
+     ▼
+ExecutionStore
+     │
+     ▼
+FailureAnalysisRunner
+     │
+     ▼
+Failure Analysis orchestration
+     │
+     ├── RuleBasedFailureAnalyzer
+     └── GeminiFailureAnalyzer
+
+
+============================================================================================
+Question. Is FailureAnalyzer an interface and how is it helpful?
+
+                 FailureAnalysisRunner
+                         │
+                         ▼
+                  FailureAnalyzer   ← interface
+                    /         \
+                   /           \
+        RuleBasedAnalyzer   GeminiAnalyzer
+                                │
+                                ▼
+                            AIClient
+                                │
+                                ▼
+                           Gemini API
+                           
+ 
+Given, above structure, The runner doesn't care which implementation it receives. It only knows:
+	
+	"You are a FailureAnalyzer, so I can call analyze() on you."
+
+
+
+when we create an object of FailureAnalyzer, we can pass any object of 
+RuleBasedAnalyzer or GeminiAnalyzer, making the handling easier.
+
+Instead of doing, RuleBasedAnalyzer ruleBasedAnalyzer = new RuleBasedAnalyzer();
+The better way to do it is FailureAnalyzer failureAnalyzer = new RuleBasedAnalyzer(); 
+OR FailureAnalyzer failureAnalyzer = new GeminiAnalyzer(); 
+
+
+============================================================================================
+Question. 
+
+
+
+============================================================================================
+Question. 
+
+
