@@ -44,4 +44,14 @@ public class LoginPage extends BasePage {
 		}
 		return false;
 	}
+	
+	public boolean isLoginButtonDisplayed() {
+		try {
+			if(actions.isDisplayed(btnLogin))
+				return true;
+		} catch (Exception e) {
+			log.error("Could not verify whether Login button is displayed or not, because of exception - ", e);
+		}
+		return false;
+	}
 }

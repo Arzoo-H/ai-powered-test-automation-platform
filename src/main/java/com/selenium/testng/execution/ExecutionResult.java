@@ -1,5 +1,7 @@
 package com.selenium.testng.execution;
 
+import com.selenium.testng.ai.failure.FailureAnalysis;
+
 public class ExecutionResult {
 
 	private String testName;
@@ -15,6 +17,7 @@ public class ExecutionResult {
 	private String failedStep;
 	private String action;
 	private String locator;
+	private FailureAnalysis failureAnalysis;
 	
 	public String getTestName() {
 		return testName;
@@ -117,6 +120,14 @@ public class ExecutionResult {
 
 	public void setLocator(String locator) {
 		this.locator = locator;
+	}
+	
+	public FailureAnalysis getFailureAnalysis() {
+		return failureAnalysis;
+	}
+
+	public void setFailureAnalysis(FailureAnalysis failureAnalysis) {
+		this.failureAnalysis = failureAnalysis;
 	}
 
 }

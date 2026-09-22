@@ -13,8 +13,8 @@ public class LoginTest extends BaseTest {
 
         LoginPage login = new LoginPage(driver);
 
-        AssertionUtils.assertTrue(login.loginToPortal("Admin", "admin123"), 
-        							"Log into the portal");
+        AssertionUtils.assertTrue(login.loginToPortal("Admin", "admin") && !login.isLoginButtonDisplayed(), 
+        							"Logged into the portal");
         
     }
 }

@@ -899,7 +899,204 @@ OR FailureAnalyzer failureAnalyzer = new GeminiAnalyzer();
 
 
 ============================================================================================
+Question. How are results stored or passed on? What is the AI analysis pipeline working end-to-end?
+
+TestNG
+   ↓
+TestListener
+   ↓
+ExecutionStore --- Store ExecutionResult throughout the TestListener cycle (success/fail/skip)
+   ↓
+List<ExecutionResult>
+   ↓
+FailureAnalyzerFactory --- (called in onFinish()) decide whether Gemini/Rule-based etc
+   ↓
+FailureAnalysisRunner --- calls analyze from FailureAnalyzer (interface :: classes implementing this is Gemini and Rule-based
+   ↓
+FailureAnalyzer 
+   ↓
+GeminiFailureAnalyzer → interprets the AI response
+   ↓
+PromptBuilder
+   ↓
+AIClient --- again an interface :: classes implementing this is Gemini for now, passing AIClient object majkes the generate function generic
+   ↓
+GeminiAIClient --- communicates with Gemini
+   ↓
+Gemini API
+   ↓
+FailureAnalysis --- stores analysis data
+   ↓
+executionResult.setFailureAnalysis() --- set FailureAnalysis in class ExecutionResult POJO
+   ↓
+Enriched ExecutionResult
+   ├── testName
+   ├── status
+   ├── exception
+   ├── stackTrace
+   ├── locator
+   ├── ...
+   └── failureAnalysis
+          ├── failureType
+          ├── rootCause
+          ├── confidence
+          ├── explanation
+          ├── possibleCauses
+          ├── suggestedAction
+          └── evidence
+
+============================================================================================
+Question. When is onStart(ITestContext) and onFinish(ITestContext) called? How many times?
+
+For an ITestListener, onStart(ITestContext) and onFinish(ITestContext) are called once for each TestNG <test> context, 
+not necessarily once for the entire XML suite.
+
+So if your testng.xml has:
+
+	<suite name="Regression Suite">
+	
+	    <test name="Chrome Tests">
+	        ...
+	    </test>
+	
+	    <test name="Firefox Tests">
+	        ...
+	    </test>
+	
+	</suite>
+
+you can get:
+
+	Chrome Tests
+	    ↓
+	onStart(Chrome Tests)
+	    ↓
+	test executions
+	    ↓
+	onFinish(Chrome Tests)
+	
+	Firefox Tests
+	    ↓
+	onStart(Firefox Tests)
+	    ↓
+	test executions
+	    ↓
+	onFinish(Firefox Tests)
+	
+
+Sequential vs parallel : 
+
+The number of onStart / onFinish callbacks doesn't change simply because execution is parallel.
+
+Sequential:
+
+		onStart
+		   ↓
+		Test A
+		   ↓
+		Test B
+		   ↓
+		Test C
+		   ↓
+		onFinish
+
+Parallel:
+
+             onStart
+                ↓
+       ┌────────┼────────┐
+       ↓        ↓        ↓
+    Thread 1 Thread 2 Thread 3
+       ↓        ↓        ↓
+       A        B        C
+       └────────┼────────┘
+                ↓
+             onFinish
+
+============================================================================================
+Question. A problem faced during making is framework.
+
+Reporting kinda was a challenge as we have analysis done in TestListener's method onFinish(ITestContext).
+ThreadLocal<ExtentTest> is excellent while a test is running, because we know the current thread. 
+But onFinish() is working with a collection of test results, 
+so there was a need to find a way to identify which Extent test belongs to which result.
+
+As read above, the onStart(ITestContext) and onFinish(ITestContext) are called once for each TestNG <test> context.
+
+Think of it like, During execution:
+	
+		Thread 1 ──→ ExtentTest A
+		Thread 2 ──→ ExtentTest B
+		Thread 3 ──→ ExtentTest C
+
+But after execution we have:
+
+		ExecutionResult A ──→ ?
+		ExecutionResult B ──→ ?
+		ExecutionResult C ──→ ?
+
+We need to establish those ? mappings. 
+We have an association problem: 
+we have the ExecutionResult objects because we explicitly store them in ExecutionStore during the relevant phases of TestListener. 
+However, for the ExtentTest objects, we haven't preserved a direct mapping between each ExtentTest and its corresponding ExecutionResult.
+
+When we reach onFinish(), we have our collection of ExecutionResult objects.
+The ExtentTest objects are still associated with their execution threads through ThreadLocal while the tests are running.
+So, we don't have a direct ExecutionResult → ExtentTest mapping available to the reporting code.
+
+However, onFinish() needs to work with ExecutionResult objects and 
+cannot rely on the original execution threads as the ThreadLocal is still useful during test execution, but it is not sufficient for post-execution reporting.
+
+============================================================================================
+Question. What was the solution to the reporting mapping problem?
+
+Because we wanted to establish:
+
+	ExecutionResult A ──→ ExtentTest A
+	ExecutionResult B ──→ ExtentTest B
+	ExecutionResult C ──→ ExtentTest C
+
+We decided to preserve a direct mapping between ExecutionResult and its corresponding ExtentTest.
+The existing ExtentTestStore uses a ConcurrentHashMap: Map<ExecutionResult, ExtentTest>
+
+This means that when an ExecutionResult is created from the corresponding ITestResult, 
+we can associate that exact ExecutionResult object with the ExtentTest that was created for that test.
+
+We do not use the test name as the key because the same test can execute multiple times with different configurations.
+For example:
+
+	loginTest → Chrome → QA
+	loginTest → Firefox → QA
+
+The test name loginTest alone would not uniquely identify those executions.
+
+We also do not need to retain ITestResult in the reporting store. 
+ITestResult is used by TestNG during the listener callbacks, 
+and ExecutionDataCollector converts it into our framework-level ExecutionResult.
+Therefore, after collection, our framework can use: ExecutionResult → ExtentTest, as the direct post-execution reporting association.
+
+============================================================================================
+Question. In ExtentTestStore class, why are we using ConcurrentHashMap?
+
+ExtentTestStore can be accessed from multiple test-execution threads because the framework supports parallel execution.
+
+For example:
+
+		Thread 1 → ExecutionResult A → ExtentTest A
+		Thread 2 → ExecutionResult B → ExtentTest B
+		Thread 3 → ExecutionResult C → ExtentTest C
+
+
+A normal HashMap is not thread-safe, so concurrent `put()` and `get()` operations can lead to unsafe behavior.
+
+ConcurrentHashMap is designed for concurrent access and allows multiple threads to safely read and update the mapping.
+The important point is that `ConcurrentHashMap` is being used because our store is shared across parallel test threads 
+— not simply because Extent uses threads.
+
+============================================================================================
 Question. 
+
+
 
 
 
@@ -907,3 +1104,8 @@ Question.
 Question. 
 
 
+
+
+
+============================================================================================
+Question. 

@@ -94,4 +94,8 @@ public class ConfigManager {
 	public String getGeminiModel() {
 	    return properties.getProperty("gemini.model");
 	}
+	
+	public String getAIFailureAnalyzer() {
+	    return properties.getProperty("ai.failure.analyzer");
+	}
 }

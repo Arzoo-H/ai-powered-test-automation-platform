@@ -1,16 +1,23 @@
 package com.selenium.testng.listeners;
 
+import java.util.List;
+
 import org.slf4j.Logger;
 import org.testng.ITestContext;
 import org.testng.ITestListener;
 import org.testng.ITestResult;
 
 import com.aventstack.extentreports.*;
+import com.selenium.testng.ai.failure.FailureAnalysisFormatter;
+import com.selenium.testng.ai.failure.FailureAnalysisRunner;
+import com.selenium.testng.ai.failure.FailureAnalyzer;
+import com.selenium.testng.ai.failure.FailureAnalyzerFactory;
 import com.selenium.testng.context.TestContext;
 import com.selenium.testng.execution.ExecutionDataCollector;
 import com.selenium.testng.execution.ExecutionResult;
 import com.selenium.testng.execution.ExecutionStore;
 import com.selenium.testng.utils.ExtentManager;
+import com.selenium.testng.utils.ExtentTestStore;
 import com.selenium.testng.utils.LoggerUtil;
 import com.selenium.testng.utils.ScreenshotUtil;
 import com.selenium.testng.web.driverfactory.DriverFactory;
@@ -25,6 +32,7 @@ public class TestListener implements ITestListener {
     public void onStart(ITestContext context) {
 
         ExecutionStore.clear();
+        ExtentTestStore.clear();
     }
     
     @Override
@@ -57,26 +65,40 @@ public class TestListener implements ITestListener {
     @Override
     public void onTestSuccess(ITestResult result) {
 
-    	ExtentManager.getTest().pass("Test Passed");
+    	ExtentTest extentTest = ExtentManager.getTest();
+
+    	if (extentTest != null) {
+    	    extentTest.pass("Test Passed");
+    	}
     	
     	// Convert TestNG execution data into a standardized result for AI analysis
     	ExecutionResult executionResult = ExecutionDataCollector.collect(result, null);
-    	ExecutionStore.add(executionResult);
+        
+    	// Preserve the execution result for AI / execution-level processing
+        ExecutionStore.add(executionResult);
+
+        // Preserve the relationship between this execution and its Extent report entry
+        ExtentTestStore.add(executionResult, extentTest);
 
     }
     
     @Override
     public void onTestSkipped(ITestResult result) {
 
-    	// Because a skipped test can sometimes occur before your onTestStart() has successfully created ExtentTest
-    	// This prevents the reporting code from throwing a NullPointerException
-    	 if (ExtentManager.getTest() != null) {
-    	        ExtentManager.getTest().skip("Test Skipped");
-    	    }
-    	
-    	// Convert TestNG execution data into a standardized result for AI analysis
-    	ExecutionResult executionResult = ExecutionDataCollector.collect(result, null);
-    	ExecutionStore.add(executionResult);
+		// Convert TestNG execution data into a standardized result for AI analysis
+		ExecutionResult executionResult = ExecutionDataCollector.collect(result, null);
+
+		// Because a skipped test can sometimes occur before your onTestStart() has successfully created ExtentTest
+		// This prevents the reporting code from throwing a NullPointerException
+		if (ExtentManager.getTest() != null) {
+			ExtentManager.getTest().skip("Test Skipped");
+
+			// Preserve the relationship between this execution result and its corresponding Extent report entry
+			ExtentTestStore.add(executionResult, ExtentManager.getTest());
+		}
+
+		// Store the execution result for AI / execution-level processing
+		ExecutionStore.add(executionResult);
 
     }
 
@@ -85,30 +107,89 @@ public class TestListener implements ITestListener {
     	
     	String screenshotPath = null;
 
-    	ExtentManager.getTest().fail(result.getThrowable());
+		ExtentTest extentTest = ExtentManager.getTest();
+
+		if (extentTest != null) {
+			extentTest.fail(result.getThrowable());
+		}
+    	
 		log.error("Test Failed: {}", result.getMethod().getMethodName(), result.getThrowable());
 
 		if (DriverFactory.getDriver() != null) {
 			screenshotPath = ScreenshotUtil.captureScreenshot(DriverFactory.getDriver(),
 					result.getMethod().getMethodName());
+			if (extentTest != null) {
+				try {
 
-			try {
-				ExtentManager.getTest().addScreenCaptureFromPath(screenshotPath);
-				log.info("Screenshot saved: {}", screenshotPath);
+					extentTest.addScreenCaptureFromPath(screenshotPath);
+					log.info("Screenshot saved: {}", screenshotPath);
 
-			} catch (Exception e) {
-				log.error("Unable to attach screenshot", e);
+				} catch (Exception e) {
+					log.error("Unable to attach screenshot", e);
+				}
 			}
 		}
         
 		// Convert TestNG execution data into a standardized result for AI analysis
 		ExecutionResult executionResult = ExecutionDataCollector.collect(result, screenshotPath);
-		ExecutionStore.add(executionResult);
+		
+		// Store the execution result for AI / execution-level processing
+	    ExecutionStore.add(executionResult);
+
+	    // Preserve the relationship between this execution result and its corresponding Extent report entry
+	    if (extentTest != null) {
+	        ExtentTestStore.add(executionResult, extentTest);
+	    }
     }
 
     @Override
     public void onFinish(ITestContext context) {
     	
+    	// Retrieve the execution results collected during this TestNG <test> context.
+        // These results are the framework-level representation of the tests that were executed.
+		List<ExecutionResult> results = ExecutionStore.getResults();
+
+		try { 
+			// create object for Rule/Gemini based analysis// Create the configured failure analyzer.
+		    // FailureAnalyzerFactory decides which implementation to use based on config.properties:
+		    // GEMINI      -> GeminiFailureAnalyzer
+		    // RULE_BASED  -> RuleBasedFailureAnalyzer
+			FailureAnalyzer failureAnalyzer = FailureAnalyzerFactory.create();	
+			
+			// Inject the selected analyzer into the runner.
+		    // The runner is responsible for applying failure analysis to the collected executions.
+			FailureAnalysisRunner runner = new FailureAnalysisRunner(failureAnalyzer);
+			
+			// Analyze and updated ExecutionResult with FailureAnalysis : failed executions and enrich their ExecutionResult objects
+		    // with the generated FailureAnalysis.
+			results = runner.analyzeFailures(results);
+	    	
+			// Add the generated failure analysis to the corresponding Extent report entry.
+		    // ExtentTestStore maintains the mapping:
+		    // ExecutionResult -> ExtentTest
+			for (ExecutionResult executionResult : results) {
+	
+				// Only failed executions that were successfully analyzed will contain a FailureAnalysis. 
+				if (executionResult.getFailureAnalysis() != null) {
+	
+					// Retrieve the ExtentTest associated with this exact execution.
+					ExtentTest extentTest = ExtentTestStore.get(executionResult);
+	
+					if (extentTest != null) {
+	
+						// Format the structured FailureAnalysis into readable text
+		                // and add it to the corresponding Extent report entry.
+						extentTest.info(FailureAnalysisFormatter.format(executionResult.getFailureAnalysis()));
+					}
+				}
+			}
+		} catch (Exception e) {
+
+	        // AI analysis is an enhancement and must not prevent
+	        // the normal automation report from being generated.
+	        log.error("AI failure analysis could not be completed", e);
+	    }
+		
         extent.flush();
         ExtentManager.unload();
 
