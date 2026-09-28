@@ -25,6 +25,10 @@ public class TestContext {
 	private String env;
 	private Boolean headless;
 	private static ThreadLocal<TestContext> context = new ThreadLocal<>();
+	// For AI failure analysis
+	private String lastAction;
+	private String lastLocator;
+	private String lastElementDiagnostics;
 
 	public TestContext(String browser, String env, Boolean headless) {
 
@@ -59,6 +63,28 @@ public class TestContext {
 		return context.get();
 	}
 
+	/*
+	 * Method used to get and set information important for AI failure analysis
+	 */
+	public String getLastAction() {
+	    return lastAction;
+	}
+
+	public String getLastLocator() {
+	    return lastLocator;
+	}
+	
+	public String getLastElementDiagnostics() {
+	    return lastElementDiagnostics;
+	}
+	
+	public void setLastAction(String lastAction, String lastLocator, String lastElementDiagnostics) {
+
+		this.lastAction = lastAction;
+		this.lastLocator = lastLocator;
+		this.lastElementDiagnostics = lastElementDiagnostics;
+	}
+	
 	public static void unload() {
 
 		context.remove();

@@ -17,6 +17,7 @@ public class ExecutionResult {
 	private String failedStep;
 	private String action;
 	private String locator;
+	private String elementDiagnostics;
 	private FailureAnalysis failureAnalysis;
 	
 	public String getTestName() {
@@ -120,6 +121,14 @@ public class ExecutionResult {
 
 	public void setLocator(String locator) {
 		this.locator = locator;
+	}
+	
+	public String getElementDiagnostics() {
+	    return elementDiagnostics;
+	}
+
+	public void setElementDiagnostics(String elementDiagnostics) {
+	    this.elementDiagnostics = elementDiagnostics;
 	}
 	
 	public FailureAnalysis getFailureAnalysis() {

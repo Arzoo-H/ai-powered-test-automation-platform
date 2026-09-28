@@ -1094,18 +1094,55 @@ The important point is that `ConcurrentHashMap` is being used because our store 
 — not simply because Extent uses threads.
 
 ============================================================================================
-Question. 
+Question. What is the benefit of adding String lastAction and lastLocator in TestContext class?
 
+What this gives us with parallel execution - Our existing ThreadLocal<TestContext> will now give us:
 
+	Thread 1 → TestContext
+	             browser = Chrome
+	             env = QA
+	             lastAction = click
+	             lastLocator = By.id("loginButton")
+	
+	Thread 2 → TestContext
+	             browser = Firefox
+	             env = Stage
+	             lastAction = enterText
+	             lastLocator = By.name("username")
 
-
+So the metadata stays associated with the correct execution thread.
 
 ============================================================================================
-Question. 
+Question. In the FailureAnalysisFormatter class, why are we replacing tags like < with &lt;?
 
+In the output we display in extent report for AI failure analysis, we want it to be treated it as text.
+So if AI sends a text containing any elements like <button> or <input>, if we put them as is in the string format we are creating,
+it might be treated as an element.
 
+Our formatter contains things like:
 
+		<b>Root Cause:</b><br>
 
+Now suppose Gemini returns: Root cause: <button> element was not enabled
+
+Without escaping, Extent's HTML renderer sees:
+
+		<b>Root Cause:</b><br>
+		Root cause: <button> element was not enabled
+
+and may interpret <button> as an actual HTML element.
+
+With escaping:
+
+		<b>Root Cause:</b><br>
+		Root cause: &lt;button&gt; element was not enabled
+
+the browser/Extent renderer displays:
+
+	Root cause: <button> element was not enabled
+
+But how does browser/Extent renderer displays: <button> and not: &lt;button&gt;
+When Extent renders that as HTML, &lt; is interpreted as the HTML entity for <, so the displayed report shows <button
 
 ============================================================================================
 Question. 

@@ -29,17 +29,31 @@ public class ExecutionDataCollector {
 		executionResult.setDuration(result.getEndMillis() - result.getStartMillis());
 
 		// test env information
-		if (TestContext.getContext().getBrowser() != null) {
-			executionResult.setBrowser(TestContext.getContext().getBrowser());
+		TestContext testContext = TestContext.getContext();
+		if (testContext != null) {
+			if (testContext.getBrowser() != null) {
+				executionResult.setBrowser(testContext.getBrowser());
+			}
+
+			if (testContext.getEnv() != null) {
+				executionResult.setEnvironment(testContext.getEnv());
+			}
+
+			if (testContext.getLastAction() != null) {
+				executionResult.setAction(testContext.getLastAction());
+			}
+
+			if (testContext.getLastLocator() != null) {
+				executionResult.setLocator(testContext.getLastLocator());
+			}
+
+			if (testContext.getLastElementDiagnostics() != null) {
+				executionResult.setElementDiagnostics(testContext.getLastElementDiagnostics());
+			}
 		}
 
-		if (TestContext.getContext().getEnv() != null) {
-			executionResult.setEnvironment(TestContext.getContext().getEnv());
-		}
-		
 		if (DriverFactory.getDriver() != null) {
-		    executionResult.setUrl(
-		            DriverFactory.getDriver().getCurrentUrl());
+			executionResult.setUrl(DriverFactory.getDriver().getCurrentUrl());
 		}
 
 		// exception information
@@ -55,6 +69,7 @@ public class ExecutionDataCollector {
 		return executionResult;
 	}
 
+	    
 	private static String getStatus(ITestResult result) {
 
 		if (result.getStatus() == ITestResult.SUCCESS) {

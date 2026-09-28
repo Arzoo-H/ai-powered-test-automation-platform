@@ -26,8 +26,8 @@ public class GeminiFailureAnalyzer implements FailureAnalyzer {
 
         // JSON parsing will be added in the next step.
         // For now, we are only validating the complete flow.
-        System.out.println("Gemini Analysis Response:");
-        System.out.println(response);
+//        System.out.println("Gemini Analysis Response:");
+//        System.out.println(response);
 
         Gson gson = new Gson();
         // map the response to key-value pair to FailureAnalysis POJO variables

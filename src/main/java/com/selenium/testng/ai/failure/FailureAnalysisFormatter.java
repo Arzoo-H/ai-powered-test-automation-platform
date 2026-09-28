@@ -1,39 +1,72 @@
 package com.selenium.testng.ai.failure;
 
+import java.util.List;
+
+/*
+ * class to format how the AI Failure Analysis looks in extent report
+ */
 public class FailureAnalysisFormatter {
 
-    private FailureAnalysisFormatter() {
-        // Utility class
-    }
+	private FailureAnalysisFormatter() {
+		// Utility class
+	}
 
-    public static String format(FailureAnalysis analysis) {
+	public static String format(FailureAnalysis analysis) {
 
-        return """
-                AI Failure Analysis
+		return """
+				<b>AI FAILURE ANALYSIS</b><br><br>
 
-                Failure Type: %s
-                Root Cause: %s
-                Confidence: %.2f
+				<b>Failure Type:</b> %s<br>
+				<b>Root Cause:</b> %s<br>
+				<b>Confidence:</b> %.2f<br><br>
 
-                Explanation:
-                %s
+				<b>Explanation:</b><br>
+				%s<br><br>
 
-                Possible Causes:
-                %s
+				<b>Possible Causes:</b>
+				%s
 
-                Suggested Action:
-                %s
+				<b>Suggested Action:</b><br>
+				%s<br><br>
 
-                Evidence:
-                %s
-                """.formatted(
-                analysis.getFailureType(),
-                analysis.getRootCause(),
-                analysis.getConfidence(),
-                analysis.getExplanation(),
-                String.join("\n- ", analysis.getPossibleCauses()),
-                analysis.getSuggestedAction(),
-                String.join("\n- ", analysis.getEvidence())
-        );
-    }
+				<b>Evidence:</b>
+				%s
+				""".formatted(
+						escapeHtml(analysis.getFailureType()), 
+						escapeHtml(analysis.getRootCause()),
+						analysis.getConfidence(), 
+						escapeHtml(analysis.getExplanation()),
+						formatList(analysis.getPossibleCauses()), 
+						escapeHtml(analysis.getSuggestedAction()),
+						formatList(analysis.getEvidence())
+					);
+	}
+
+	private static String formatList(List<String> items) {
+
+		if (items == null || items.isEmpty()) {
+			return "<br>None<br><br>";
+		}
+
+		StringBuilder html = new StringBuilder("<ul>"); // unordered list
+		for (String item : items) {
+			html.append("<li>").append(escapeHtml(item)).append("</li>");
+		}
+		html.append("</ul><br>");
+
+		return html.toString();
+	}
+
+	private static String escapeHtml(String value) {
+
+		if (value == null) {
+			return "";
+		}
+
+		return value.replace("&", "&amp;")
+				.replace("<", "&lt;")
+				.replace(">", "&gt;")
+				.replace("\"", "&quot;")
+				.replace("'", "&#39;");
+	}
 }
