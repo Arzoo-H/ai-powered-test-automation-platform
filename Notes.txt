@@ -1145,4 +1145,133 @@ But how does browser/Extent renderer displays: <button> and not: &lt;button&gt;
 When Extent renders that as HTML, &lt; is interpreted as the HTML entity for <, so the displayed report shows <button
 
 ============================================================================================
+Question. For summarizing the execution summary, are we including retry count of testcases in the total counts?
+
+No.
+That isn't a good way to design execution summary.
+
+How RetryAnalyzer works - We have used IAnnotationTransformer which sets for all testcases with annotation 
+							and this Listener is added on top of BaseTest.
+							
+Problem: ITestResult records each testcase, even the retry ones, as individual.
+		 How we can record if a testcase is on a retry attempt?
+		 
+Solution: We'll mark whether TestNG has scheduled another attempt by attaching an attribute to the ITestResult.
+			
+			"result.setAttribute(RETRY_SCHEDULED_ATTRIBUTE, shouldRetry);"
+			
+		Now, we need to track this in 
+		- ExecutionDataCollector so that during execution we catch this information
+		- ExecutionResult which we use for analysis and summary
+			
+to gain output as,
+
+EXECUTION SUMMARY
+-------------------------
+Total Tests:              1
+Passed:                   1
+Failed:                   0
+Skipped:                  0
+
+Total Attempts:           3
+Retry Attempts:           2
+Tests Retried:            1
+Failed Attempts:          2
+Recovered After Retry:    1
+
+
+============================================================================================
+Question. How do we group/recognize that the retry attempts belong to same testcase?
+
+We have introduced a new variable in ExecutionDataCollector called invocationId which is nothing but a combination of 
+		"testClass + "#" + testName + "#" + parameters" 
+		
+Which will stay the same for 1 testcase even if it executes 3 times. So using this newly generated 
+id, we can do the calculations in ExecutionSummaryGenerator.
+		
+
+============================================================================================
+Question. When we are creating summary in AISummaryGenerator class, why we throw 'IllegalStateException' exception?
+
+We use IllegalStateException because the application received a response that it cannot use in its current state.
+We are not saying the Java syntax is invalid. 
+We are saying the AI-generated response does not meet the requirements for a usable execution summary.
+
+One important distinction: this exception does not automatically mean Gemini itself threw an error. 
+Our own code throws it after checking the response.
+
+============================================================================================
+Question. How do we ensure that Gemini is not being called for each testcase retry that is happening?
+
+		
+		invocationId // attached to each testcase being executed (even retries one)
+		     ↓
+		all attempts
+		     ↓
+		last attempt // using Java lambda's reduce() to get final attempt in FailureAnalysisRunner & ExecutionSummaryGenerator
+		     ↓
+		┌───────────────┐
+		│ final PASSED? │── Yes → no AI analysis
+		└───────────────┘
+		       │ No
+		       ↓
+		final FAILED
+		       ↓
+		Gemini once
+
+
+============================================================================================
+Question. Why introduce FakeAIClient class?
+
+To debug framework-level issues without consuming Gemini API quota.
+Failure Analysis uses the rule-based analyzer, while Execution Summary uses FakeAIClient during debugging.
+
+============================================================================================
+Question. How do you switch the framework between AI mode and debugging mode?
+
+Two changes are required:
+	In config.properties and SuiteListener
+	
+For debugging mode: 
+	 config.properties  = update ai.failure.analyzer configuration to RULE_BASED 
+	 SuiteListener      = where we are creating object of AISummaryGenerator, put FakeAIClient()
+	
+For AI mode:
+ 	 config.properties  = update ai.failure.analyzer configuration to GEMINI 
+	 SuiteListener      = where we are creating object of AISummaryGenerator, put GeminiAIClient()
+
+============================================================================================
+Question. Why use suitelistener instead of testlistener?
+
+Because AI analysis and execution summary are suite-level operations.
+TestListener runs per TestNG <test> context, which can cause duplicate processing in a parallel suite. 
+SuiteListener runs once after the entire suite, so it can process all ExecutionResults together.
+
+                CrossBrowserSuite
+                       │
+          ┌────────────┴────────────┐
+          ↓                         ↓
+  RetryMechanismTest          LoginTest Chrome-QA
+          │                         │
+     3 attempts                  3 attempts
+          │                         │
+          └────────────┬────────────┘
+                       ↓
+                ExecutionStore
+                  6 results
+                       ↓
+                SuiteListener
+                       ↓
+          ┌────────────┴────────────┐
+          ↓                         ↓
+    Failure Analysis         Execution Summary
+          │                         │
+          └────────────┬────────────┘
+                       ↓
+                 Extent Report
+
+============================================================================================
 Question. 
+
+
+

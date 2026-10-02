@@ -2,10 +2,12 @@ package com.selenium.testng.execution;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.util.Arrays;
 
 import org.testng.ITestResult;
 
 import com.selenium.testng.context.TestContext;
+import com.selenium.testng.utils.RetryAnalyzer;
 import com.selenium.testng.web.driverfactory.DriverFactory;
 
 /**
@@ -25,9 +27,15 @@ public class ExecutionDataCollector {
 		ExecutionResult executionResult = new ExecutionResult();
 		executionResult.setTestName(result.getMethod().getMethodName());
 		executionResult.setTestClass(result.getTestClass().getName());
-		executionResult.setStatus(getStatus(result));
-		executionResult.setDuration(result.getEndMillis() - result.getStartMillis());
+		executionResult.setInvocationId(buildInvocationId(result));
+		
+		boolean retryScheduled = Boolean.TRUE.equals(
+			    result.getAttribute(RetryAnalyzer.RETRY_SCHEDULED_ATTRIBUTE));
+		executionResult.setRetryScheduled(retryScheduled);
 
+		executionResult.setStatus(getStatus(result, retryScheduled));
+		executionResult.setDuration(result.getEndMillis() - result.getStartMillis());
+		
 		// test env information
 		TestContext testContext = TestContext.getContext();
 		if (testContext != null) {
@@ -69,8 +77,22 @@ public class ExecutionDataCollector {
 		return executionResult;
 	}
 
+	private static String buildInvocationId(ITestResult result) {
+
+	    String testClass = result.getTestClass().getName();
+	    String testName = result.getMethod().getMethodName();
+	    String parameters = Arrays.deepToString(result.getParameters());
+
+	    return testClass + "#" + testName + "#" + parameters;
+	}
 	    
-	private static String getStatus(ITestResult result) {
+	private static String getStatus(ITestResult result, boolean retryScheduled) {
+
+		// TestNG may mark an attempt as skipped after a retry is scheduled.
+		// Preserve its actual failure classification for AI analysis.
+		if (retryScheduled && result.getThrowable() != null) {
+			return "FAILED";
+		}
 
 		if (result.getStatus() == ITestResult.SUCCESS) {
 			return "PASSED";

@@ -6,6 +6,8 @@
 			class-name="com.selenium.testng.listeners.TestListener" />
 		<listener
 			class-name="com.selenium.testng.listeners.RetryListener" />
+		<listener
+        	class-name="com.selenium.testng.listeners.SuiteListener" />
 	</listeners>
 
 	<parameter name="env" value="qa" />
@@ -22,18 +24,5 @@
 		<classes>
 			 <class name="com.selenium.testng.web.tests.LoginTest" />
 		</classes>
-	</test>
-
-	<test name="Firefox-QA">
-		<parameter name="browser" value="firefox" />
-		<classes>
-			<class name="com.selenium.testng.web.tests.AdminTest" />
-		</classes>
-	</test>
-
-	<test name="API-QA">
-		<classes>
-			<class name="com.selenium.testng.api.tests.UserApiTest" /> 
-		</classes> 
 	</test>
 </suite>

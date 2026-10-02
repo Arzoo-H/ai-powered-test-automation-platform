@@ -8,6 +8,13 @@ import org.testng.annotations.ITestAnnotation;
 
 import com.selenium.testng.utils.RetryAnalyzer;
 
+/**
+ * 
+ * The RetryListener implements IAnnotationTransformer and automatically attaches RetryAnalyzer to test annotations. 
+ * That means we don't need to add retryAnalyzer = RetryAnalyzer.class to every @Test method.
+ * @author Arzoo Hingorani
+ *
+ */
 public class RetryListener implements IAnnotationTransformer {
 
     @SuppressWarnings("rawtypes")

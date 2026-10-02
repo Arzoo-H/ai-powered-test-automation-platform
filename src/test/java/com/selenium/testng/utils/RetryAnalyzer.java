@@ -1,3 +1,4 @@
+
 package com.selenium.testng.utils;
 
 import org.testng.IRetryAnalyzer;
@@ -5,20 +6,37 @@ import org.testng.ITestResult;
 
 public class RetryAnalyzer implements IRetryAnalyzer {
 
-    int count = 0;
+	public static final String RETRY_SCHEDULED_ATTRIBUTE = "retryScheduled";
 
-    int maxRetry = 2;
+	private int count = 0;
+	private final int maxRetry = 2;
 
-    @Override
-    public boolean retry(ITestResult result) {
+	@Override
+	public boolean retry(ITestResult result) {
 
-        if(count < maxRetry) {
+		boolean shouldRetry = count < maxRetry;
 
-            count++;
+		// Record whether this failed attempt will be retried.
+		result.setAttribute(RETRY_SCHEDULED_ATTRIBUTE, shouldRetry);
 
-            return true;
-        }
+		if (shouldRetry) {
+			count++;
+			
+			System.out.println(
+				    "[RetryAnalyzer] Test: " + result.getName()
+				    + " | Status: " + result.getStatus()
+				    + " | Throwable: " + result.getThrowable()
+				    + " | Retry scheduled: " + shouldRetry
+				);
+			return true;
+		}
 
-        return false;
-    }
+		System.out.println(
+			    "[RetryAnalyzer] Test: " + result.getName()
+			    + " | Status: " + result.getStatus()
+			    + " | Throwable: " + result.getThrowable()
+			    + " | Retry scheduled: " + shouldRetry
+			);
+		return false;
+	}
 }

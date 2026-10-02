@@ -19,7 +19,9 @@ public class ExecutionResult {
 	private String locator;
 	private String elementDiagnostics;
 	private FailureAnalysis failureAnalysis;
-	
+	private boolean retryScheduled;
+	private String invocationId;
+
 	public String getTestName() {
 		return testName;
 	}
@@ -138,5 +140,20 @@ public class ExecutionResult {
 	public void setFailureAnalysis(FailureAnalysis failureAnalysis) {
 		this.failureAnalysis = failureAnalysis;
 	}
+	
+	public boolean isRetryScheduled() {
+	    return retryScheduled;
+	}
 
+	public void setRetryScheduled(boolean retryScheduled) {
+	    this.retryScheduled = retryScheduled;
+	}
+
+	public String getInvocationId() {
+	    return invocationId;
+	}
+
+	public void setInvocationId(String invocationId) {
+	    this.invocationId = invocationId;
+	}
 }
