@@ -1,1 +1,19 @@
+# Maven
 /target/
+
+# Execution output
+/logs/
+/reports/
+/screenshots/
+
+# IDE
+.classpath
+.project
+.settings/
+
+# OS
+.DS_Store
+
+# Local configuration / secrets
+.env
+*.local.properties
