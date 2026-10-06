@@ -25,10 +25,18 @@ public class TestContext {
 	private String env;
 	private Boolean headless;
 	private static ThreadLocal<TestContext> context = new ThreadLocal<>();
-	// For AI failure analysis
+
+	// For AI failure analysis 
+	// For UI execution context
 	private String lastAction;
 	private String lastLocator;
 	private String lastElementDiagnostics;
+	
+	// For API execution context
+	private String apiMethod;
+	private String apiEndpoint;
+	private Integer apiStatusCode; // datatype Integer instead of int and Long instead of long because these values can be null
+	private Long apiResponseTime;
 
 	public TestContext(String browser, String env, Boolean headless) {
 
@@ -83,6 +91,31 @@ public class TestContext {
 		this.lastAction = lastAction;
 		this.lastLocator = lastLocator;
 		this.lastElementDiagnostics = lastElementDiagnostics;
+	}
+	
+	public String getApiMethod() {
+		return apiMethod;
+	}
+
+	public String getApiEndpoint() {
+		return apiEndpoint;
+	}
+
+	public Integer getApiStatusCode() {
+		return apiStatusCode;
+	}
+
+	public Long getApiResponseTime() {
+		return apiResponseTime;
+	}
+
+	public void setApiExecutionContext(String apiMethod, String apiEndpoint, Integer apiStatusCode,
+			Long apiResponseTime) {
+
+		this.apiMethod = apiMethod;
+		this.apiEndpoint = apiEndpoint;
+		this.apiStatusCode = apiStatusCode;
+		this.apiResponseTime = apiResponseTime;
 	}
 	
 	public static void unload() {

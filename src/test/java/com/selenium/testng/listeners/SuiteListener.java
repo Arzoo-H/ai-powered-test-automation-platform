@@ -8,7 +8,8 @@ import org.testng.ISuiteListener;
 
 import com.aventstack.extentreports.ExtentReports;
 import com.aventstack.extentreports.ExtentTest;
-import com.selenium.testng.ai.client.FakeAIClient;
+import com.selenium.testng.ai.client.AIClient;
+import com.selenium.testng.ai.client.AIClientFactory;
 import com.selenium.testng.ai.failure.FailureAnalysisFormatter;
 import com.selenium.testng.ai.failure.FailureAnalysisRunner;
 import com.selenium.testng.ai.failure.FailureAnalyzer;
@@ -103,10 +104,30 @@ public class SuiteListener implements ISuiteListener {
 			ExecutionSummary summary = new ExecutionSummaryGenerator().generateSummary(results);
 
 			log.info("Generating AI execution summary for suite '{}' with {} results", suite.getName(), results.size());
+			
+			log.info("========== EXECUTION SUMMARY ==========");
+			log.info("Tests: {} | Passed: {} | Failed: {} | Skipped: {}",
+			        summary.getTotalTests(),
+			        summary.getPassedTests(),
+			        summary.getFailedTests(),
+			        summary.getSkippedTests());
+
+			log.info("Attempts: {} | Retries: {} | Failed Attempts: {} | Recovered: {}",
+			        summary.getTotalAttempts(),
+			        summary.getRetryAttempts(),
+			        summary.getFailedAttempts(),
+			        summary.getRecoveredAfterRetry());
+
+			log.info("Duration: {} ms | Health: {}",
+			        summary.getTotalDuration(),
+			        summary.getOverallHealth());
+
+			log.info("========================================");
 
 			// Generate AI execution summary
-			AISummaryGenerator aiSummaryGenerator = new AISummaryGenerator(new FakeAIClient(), new PromptBuilder());
-
+			AIClient aiClient = AIClientFactory.create();
+			AISummaryGenerator aiSummaryGenerator = new AISummaryGenerator(aiClient, new PromptBuilder());
+			
 			summary = aiSummaryGenerator.generate(summary, results);
 
 			log.info("AI execution summary generated for suite '{}'", suite.getName());

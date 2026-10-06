@@ -12,24 +12,18 @@
 
 	<parameter name="env" value="qa" />
 	<parameter name="headless" value="true" />
-
-	<test name="UI Tests-testRetry">
-		<classes>
-			<class
-				name="com.selenium.testng.framework.tests.RetryMechanismTest" />
-		</classes>
-	</test>
-
-	<test name="UI Tests-Chrome-Login">
+	
+	<test name="Chrome-QA">
 		<parameter name="browser" value="chrome" />
 		<classes>
-			<class name="com.selenium.testng.web.tests.LoginTest" />
+			 <class name="com.selenium.testng.web.tests.LoginTest" />
 		</classes>
 	</test>
 
-	<test name="API Test">
+	<test name="Firefox-QA">
+		<parameter name="browser" value="firefox" />
 		<classes>
-			<class name="com.selenium.testng.api.tests.UserApiTest" />
+			<class name="com.selenium.testng.web.tests.LoginTest" />
 		</classes>
 	</test>
 </suite>

@@ -1,4 +1,20 @@
-Question. Why not use String instead of StringWrite for throwable.printStackTrace()
+
+# Learning & Design Notes
+
+This document contains my learning notes, design decisions, questions, and technical reasoning collected while building this project.
+
+These notes are intentionally kept as a reference for understanding the thought process behind the framework. 
+They may contain informal explanations, alternative approaches, experiments, and evolving design decisions, 
+so they are not intended to represent formal project documentation.
+
+Examples and environment details are generalized where necessary, and no credentials, API keys, or other secrets are included.
+
+Note: These are personal learning and design notes created during the development of this project. 
+Some explanations describe concepts explored while implementing the framework, while others describe hypothetical or future scenarios. 
+The implementation in the repository should be considered the source of truth for the current architecture.
+
+============================================================================================
+Question. Why not use String instead of StringWriter for throwable.printStackTrace()
 
 Because throwable.printStackTrace() has a return type of: void
 
@@ -21,8 +37,9 @@ and all of them could execute: "ExecutionStore.add(executionResult);" at almost 
 
 A normal 'new ArrayList<>()' is not thread-safe.
 
-We therefore use: Collections.synchronizedList(...)
-so additions are synchronized.
+We therefore use: Collections.synchronizedList(...) so additions are synchronized.
+FYI - Individual list operations such as add() are synchronized. 
+		Compound operations such as iteration or copying may still require explicit synchronization on the list.
 
 Conceptually:
 
@@ -78,6 +95,7 @@ That's where synchronization becomes relevant.
 
 At a very basic level:
 	synchronized makes threads take turns when accessing a particular piece of shared code/state.
+	which means, synchronized allows only one thread at a time to execute a synchronized block protected by the same lock object.
 
 Think of a single-room office with one key.
 
@@ -247,6 +265,20 @@ That's the coordination.
 ============================================================================================
 Question. Why are we NOT using ThreadLocal for ExecutionStore?
 
+ThreadLocal is appropriate for execution-specific state such as TestContext, 
+where each test thread needs its own context. 
+
+		ThreadLocal<TestContext>
+		        ↓
+		one context per thread
+
+ExecutionStore is different because its purpose is to aggregate results across ALL threads.
+That ties together two concepts you've implemented:
+		
+		Shared ExecutionStore
+		        ↓
+		one collection for the whole suite/all execution threads
+		
 Because we want one collection for the entire test execution.
 Imagine:
 	Thread 1 → Login → Result 1
@@ -333,6 +365,9 @@ evidence       = [...]
 
 ============================================================================================
 Question. RuleBasedFailureAnalyzer file already defines the failures and possible reasons. Why is AI needed?
+
+The following examples are hypothetical scenarios used to illustrate where contextual AI reasoning 
+could provide more value than simple exception classification.
 
 Our rule engine answers: WHAT TYPE OF FAILURE?
 AI attempts to answer: WHY DID IT LIKELY HAPPEN?
@@ -847,24 +882,18 @@ That's polymorphism + abstraction + dependency injection working together.
 ============================================================================================
 Question. How is TestListener (storing the execution results) and Analysis flow related?
 
-   Tests
-     │
-     ▼
-TestListener
-     │
-     │ onFinish()
-     ▼
-ExecutionStore
-     │
-     ▼
-FailureAnalysisRunner
-     │
-     ▼
-Failure Analysis orchestration
-     │
-     ├── RuleBasedFailureAnalyzer
-     └── GeminiFailureAnalyzer
-
+TestNG (tests)
+   │
+   ├── TestListener
+   │      └── ExecutionDataCollector
+   │               ↓
+   │        ExecutionStore
+   │
+   └── SuiteListener
+          ↓
+   FailureAnalysisRunner (RuleBasedFailureAnalyzer OR GeminiFailureAnalyzer)
+          ↓
+   ExecutionSummaryGenerator
 
 ============================================================================================
 Question. Is FailureAnalyzer an interface and how is it helpful?
@@ -890,12 +919,14 @@ Given, above structure, The runner doesn't care which implementation it receives
 
 
 
-when we create an object of FailureAnalyzer, we can pass any object of 
-RuleBasedAnalyzer or GeminiAnalyzer, making the handling easier.
+We can use an FailureAnalyzer reference to hold any object whose class implements the FailureAnalyzer interface.
+Like creating objects of RuleBasedAnalyzer or GeminiAnalyzer, making the handling easier.
 
 Instead of doing, RuleBasedAnalyzer ruleBasedAnalyzer = new RuleBasedAnalyzer();
-The better way to do it is FailureAnalyzer failureAnalyzer = new RuleBasedAnalyzer(); 
-OR FailureAnalyzer failureAnalyzer = new GeminiAnalyzer(); 
+The better way to do it is,
+		FailureAnalyzer failureAnalyzer = new RuleBasedFailureAnalyzer(); 
+		OR 
+		FailureAnalyzer failureAnalyzer = new GeminiFailureAnalyzer(aiClient); 
 
 
 ============================================================================================
@@ -903,9 +934,9 @@ Question. How are results stored or passed on? What is the AI analysis pipeline 
 
 TestNG
    ↓
-TestListener
+SuiteListener
    ↓
-ExecutionStore --- Store ExecutionResult throughout the TestListener cycle (success/fail/skip)
+ExecutionStore --- Store ExecutionResult throughout the SuiteListener cycle (success/fail/skip)
    ↓
 List<ExecutionResult>
    ↓
@@ -913,46 +944,57 @@ FailureAnalyzerFactory --- (called in onFinish()) decide whether Gemini/Rule-bas
    ↓
 FailureAnalysisRunner --- calls analyze from FailureAnalyzer (interface :: classes implementing this is Gemini and Rule-based
    ↓
-FailureAnalyzer 
+FailureAnalyzer interface
    ↓
-GeminiFailureAnalyzer → interprets the AI response
-   ↓
-PromptBuilder
-   ↓
-AIClient --- again an interface :: classes implementing this is Gemini for now, passing AIClient object majkes the generate function generic
-   ↓
-GeminiAIClient --- communicates with Gemini
-   ↓
-Gemini API
-   ↓
-FailureAnalysis --- stores analysis data
-   ↓
-executionResult.setFailureAnalysis() --- set FailureAnalysis in class ExecutionResult POJO
-   ↓
-Enriched ExecutionResult
-   ├── testName
-   ├── status
-   ├── exception
-   ├── stackTrace
-   ├── locator
-   ├── ...
-   └── failureAnalysis
-          ├── failureType
-          ├── rootCause
-          ├── confidence
-          ├── explanation
-          ├── possibleCauses
-          ├── suggestedAction
-          └── evidence
+┌─────────────────────────────┐
+│                             │
+RuleBasedFailureAnalyzer   GeminiFailureAnalyzer → interprets the AI response
+                              ↓
+                         PromptBuilder
+                              ↓
+                           AIClient --- again an interface :: classes implementing this is Gemini for now, 
+                           					passing AIClient object majkes the generate function generic
+                              ↓
+                       GeminiAIClient --- communicates with Gemin
+                              ↓
+                         Gemini API
+                              ↓
+                       FailureAnalysis --- stores analysis data
+                              ↓
+              ExecutionResult.setFailureAnalysis()   --- set FailureAnalysis in class ExecutionResult POJO
+							  ↓
+					Enriched ExecutionResult
+					   ├── testName
+					   ├── status
+					   ├── exception
+					   ├── stackTrace
+					   ├── locator
+					   ├── ...
+					   └── failureAnalysis
+					          ├── failureType
+					          ├── rootCause
+					          ├── confidence
+					          ├── explanation
+					          ├── possibleCauses
+					          ├── suggestedAction
+					          └── evidence
 
 ============================================================================================
 Question. When is onStart(ITestContext) and onFinish(ITestContext) called? How many times?
 
-For an ITestListener, onStart(ITestContext) and onFinish(ITestContext) are called once for each TestNG <test> context, 
-not necessarily once for the entire XML suite.
+There are two different listener scopes we use in this framework:
+1. ITestListener → test-level lifecycle
+2. ISuiteListener → suite-level lifecycle
 
-So if your testng.xml has:
+1. ITestListener — TestNG <test> context
 
+For an ITestListener, methods such as:
+	onStart(ITestContext)
+	onFinish(ITestContext)
+are called once for each TestNG <test> context, not necessarily once for the entire XML suite.
+
+For example:
+	<xml
 	<suite name="Regression Suite">
 	
 	    <test name="Chrome Tests">
@@ -965,87 +1007,173 @@ So if your testng.xml has:
 	
 	</suite>
 
-you can get:
+The listener can receive:
+		Chrome Tests
+		    ↓
+		onStart(Chrome Tests)
+		    ↓
+		test executions
+		    ↓
+		onFinish(Chrome Tests)
+		
+		Firefox Tests
+		    ↓
+		onStart(Firefox Tests)
+		    ↓
+		test executions
+		    ↓
+		onFinish(Firefox Tests)
 
-	Chrome Tests
-	    ↓
-	onStart(Chrome Tests)
-	    ↓
-	test executions
-	    ↓
-	onFinish(Chrome Tests)
+So in this example, onStart(ITestContext) and onFinish(ITestContext) can each be called twice.
+The number of callbacks is determined by the number of TestNG <test> contexts, 
+not simply by whether execution is sequential or parallel.
+
+----------------------------------------------------------------------------------------------
+2. ISuiteListener — Entire TestNG suite
+
+Our framework uses ISuiteListener for operations that need the results of the entire suite.
+The relevant methods are:
+	onStart(ISuite)
+	onFinish(ISuite)
+
+For one TestNG suite:
+	xml
+	<suite name="Regression Suite">
 	
-	Firefox Tests
-	    ↓
-	onStart(Firefox Tests)
-	    ↓
-	test executions
-	    ↓
-	onFinish(Firefox Tests)
+	    <test name="Chrome Tests">
+	        ...
+	    </test>
 	
+	    <test name="Firefox Tests">
+	        ...
+	    </test>
+	
+	</suite>
 
-Sequential vs parallel : 
+the lifecycle is conceptually:
 
-The number of onStart / onFinish callbacks doesn't change simply because execution is parallel.
+		Regression Suite
+		       ↓
+		onStart(ISuite)
+		       ↓
+		┌───────────────┬───────────────┐
+		↓               ↓
+		Chrome Tests    Firefox Tests
+		↓               ↓
+		test execution  test execution
+		└───────────────┴───────────────┘
+		       ↓
+		onFinish(ISuite)
 
-Sequential:
+Therefore, for one suite, ISuiteListener.onStart() and ISuiteListener.onFinish() are called once for that suite.
+This is why our framework uses SuiteListener for:
 
-		onStart
-		   ↓
-		Test A
-		   ↓
-		Test B
-		   ↓
-		Test C
-		   ↓
-		onFinish
+	Complete TestNG Suite
+	        ↓
+	   ExecutionStore
+	        ↓
+	   Failure Analysis
+	        ↓
+	 Execution Summary
+	        ↓
+	   AI Processing
+	        ↓
+	   Extent Report
 
-Parallel:
+----------------------------------------------------------------------------------------------
+3. Sequential vs Parallel Execution
 
-             onStart
-                ↓
-       ┌────────┼────────┐
-       ↓        ↓        ↓
-    Thread 1 Thread 2 Thread 3
-       ↓        ↓        ↓
-       A        B        C
-       └────────┼────────┘
-                ↓
-             onFinish
+Parallel execution does not change the lifecycle scope.
+For example, with one TestNG suite:
+
+#### Sequential
+			onStart(ISuite)
+			       ↓
+			    Test A
+			       ↓
+			    Test B
+			       ↓
+			    Test C
+			       ↓
+			onFinish(ISuite)
+
+#### Parallel
+             onStart(ISuite)
+                   ↓
+          ┌────────┼────────┐
+          ↓        ↓        ↓
+       Thread 1 Thread 2 Thread 3
+          ↓        ↓        ↓
+       Test A   Test B   Test C
+          └────────┼────────┘
+                   ↓
+             onFinish(ISuite)
+
+The tests may execute concurrently, but onFinish(ISuite) is still the suite-level completion point.
+This distinction is important in our framework because we need all ExecutionResult objects from the suite before performing:
+			
+			Failure Analysis
+			       ↓
+			Execution Summary
+			       ↓
+			AI processing
+
+That is one of the reasons we moved the AI processing from ITestListener.onFinish(ITestContext) to ISuiteListener.onFinish(ISuite).
 
 ============================================================================================
 Question. A problem faced during making is framework.
 
-Reporting kinda was a challenge as we have analysis done in TestListener's method onFinish(ITestContext).
+Reporting became a challenge because our suite-level AI analysis and execution summary 
+are performed in SuiteListener.onFinish(ISuite).
+
 ThreadLocal<ExtentTest> is excellent while a test is running, because we know the current thread. 
-But onFinish() is working with a collection of test results, 
-so there was a need to find a way to identify which Extent test belongs to which result.
-
-As read above, the onStart(ITestContext) and onFinish(ITestContext) are called once for each TestNG <test> context.
-
-Think of it like, During execution:
+For example, During execution:
 	
 		Thread 1 ──→ ExtentTest A
 		Thread 2 ──→ ExtentTest B
 		Thread 3 ──→ ExtentTest C
 
-But after execution we have:
+However, when the entire suite finishes, SuiteListener.onFinish(ISuite) 
+works with the collection of ExecutionResult objects stored during test execution.
+
+At that point, we need to answer:
 
 		ExecutionResult A ──→ ?
 		ExecutionResult B ──→ ?
 		ExecutionResult C ──→ ?
 
-We need to establish those ? mappings. 
-We have an association problem: 
-we have the ExecutionResult objects because we explicitly store them in ExecutionStore during the relevant phases of TestListener. 
-However, for the ExtentTest objects, we haven't preserved a direct mapping between each ExtentTest and its corresponding ExecutionResult.
+We need to establish those ? mappings
+In other words, we need to establish which ExtentTest belongs to which ExecutionResult.
 
-When we reach onFinish(), we have our collection of ExecutionResult objects.
-The ExtentTest objects are still associated with their execution threads through ThreadLocal while the tests are running.
-So, we don't have a direct ExecutionResult → ExtentTest mapping available to the reporting code.
+The association problem: 
+------------------------
+We have the ExecutionResult objects because TestListener explicitly collects and stores them in ExecutionStore 
+during the relevant test lifecycle events.
 
-However, onFinish() needs to work with ExecutionResult objects and 
-cannot rely on the original execution threads as the ThreadLocal is still useful during test execution, but it is not sufficient for post-execution reporting.
+However, for the ExtentTest objects, we initially relied on ThreadLocal 
+because each test was associated with the current execution thread while it was running.
+That works well during test execution:
+
+		Thread 1
+		   ↓
+		ThreadLocal<ExtentTest>
+		   ↓
+		ExtentTest A
+
+But SuiteListener.onFinish(ISuite) operates after the test execution has completed 
+and processes the collected ExecutionResult objects.
+Therefore, the reporting code cannot simply say: ExtentTestStore.get();
+because there is no longer a meaningful "current test" thread associated with the ExecutionResult being processed.
+
+We therefore needed a direct association:
+		
+		ExecutionResult A ──→ ExtentTest A
+		
+		ExecutionResult B ──→ ExtentTest B
+		
+		ExecutionResult C ──→ ExtentTest C
+
+This led to the solution of maintaining a direct ExecutionResult → ExtentTest mapping in ExtentTestStore.
 
 ============================================================================================
 Question. What was the solution to the reporting mapping problem?
@@ -1179,6 +1307,17 @@ Tests Retried:            1
 Failed Attempts:          2
 Recovered After Retry:    1
 
+                    ExecutionResult
+                   /              \
+                UI                  API
+                 \                  /
+                  ExecutionHistory
+                         ↓
+                ExecutionSummary
+                         ↓
+                   PromptBuilder
+                         ↓
+                         AI
 
 ============================================================================================
 Question. How do we group/recognize that the retry attempts belong to same testcase?
@@ -1186,9 +1325,8 @@ Question. How do we group/recognize that the retry attempts belong to same testc
 We have introduced a new variable in ExecutionDataCollector called invocationId which is nothing but a combination of 
 		"testClass + "#" + testName + "#" + parameters" 
 		
-Which will stay the same for 1 testcase even if it executes 3 times. So using this newly generated 
+That is, the same logical test invocation produces the same invocationId across its retry attempts. So using this generated 
 id, we can do the calculations in ExecutionSummaryGenerator.
-		
 
 ============================================================================================
 Question. When we are creating summary in AISummaryGenerator class, why we throw 'IllegalStateException' exception?
@@ -1208,7 +1346,7 @@ Question. How do we ensure that Gemini is not being called for each testcase ret
 		     ↓
 		all attempts
 		     ↓
-		last attempt // using Java lambda's reduce() to get final attempt in FailureAnalysisRunner & ExecutionSummaryGenerator
+		last attempt // using Java lambda's reduce()/List.size()-1 to get final attempt in FailureAnalysisRunner & ExecutionSummaryGenerator
 		     ↓
 		┌───────────────┐
 		│ final PASSED? │── Yes → no AI analysis
@@ -1224,27 +1362,28 @@ Question. How do we ensure that Gemini is not being called for each testcase ret
 Question. Why introduce FakeAIClient class?
 
 To debug framework-level issues without consuming Gemini API quota.
-Failure Analysis uses the rule-based analyzer, while Execution Summary uses FakeAIClient during debugging.
+In debugging mode, Failure Analysis uses the rule-based analyzer and Execution Summary uses FakeAIClient, 
+allowing framework-level issues to be tested without consuming Gemini API quota.
 
 ============================================================================================
 Question. How do you switch the framework between AI mode and debugging mode?
 
-Two changes are required:
-	In config.properties and SuiteListener
+Two changes are required in config.properties:
 	
 For debugging mode: 
-	 config.properties  = update ai.failure.analyzer configuration to RULE_BASED 
-	 SuiteListener      = where we are creating object of AISummaryGenerator, put FakeAIClient()
+	 failure.analysis.strategy  	= update configuration to RULE_BASED 
+	 execution.summary.provider     = update configuration to FAKE
 	
 For AI mode:
- 	 config.properties  = update ai.failure.analyzer configuration to GEMINI 
-	 SuiteListener      = where we are creating object of AISummaryGenerator, put GeminiAIClient()
+ 	 failure.analysis.strategy 	 	= update configuration to GEMINI 
+	 execution.summary.provider     = update configuration to GEMINI 
 
 ============================================================================================
 Question. Why use suitelistener instead of testlistener?
 
 Because AI analysis and execution summary are suite-level operations.
-TestListener runs per TestNG <test> context, which can cause duplicate processing in a parallel suite. 
+TestListener runs per TestNG <test> context, in a suite containing multiple <test> contexts, 
+this can cause suite-level processing to happen multiple times. 
 SuiteListener runs once after the entire suite, so it can process all ExecutionResults together.
 
                 CrossBrowserSuite
@@ -1271,7 +1410,113 @@ SuiteListener runs once after the entire suite, so it can process all ExecutionR
                  Extent Report
 
 ============================================================================================
-Question. 
+Question. How do we design listeners in our automation framework?
 
+We separate listeners based on lifecycle scope. 
+Test-level listeners handle individual test events and retry behavior, 
+while suite-level listeners aggregate execution data after the complete TestNG suite finishes. 
 
+Having the following in BaseTest and BaseApiTest is appropriate because they operate around individual test execution:
+	TestListener → test start/pass/fail/skip
+	RetryListener → retry behavior for individual tests
+
+And,
+Since SuiteListener is responsible for the entire suite:
+	testng.xml
+        │
+        └── SuiteListener
+        
+This prevents duplicate reporting and makes the framework safer for parallel execution.
+
+Architecture:
+
+                    TestNG Suite
+                         │
+                 SuiteListener
+                         │
+             ┌───────────┴───────────┐
+             │                       │
+          UI tests                API tests
+             │                       │
+        BaseTest               BaseApiTest
+             │                       │
+      TestListener            TestListener
+      RetryListener            RetryListener
+             │                       │
+             └───────────┬───────────┘
+                         ↓
+                  ExecutionStore
+                         ↓
+                  SuiteListener
+                         ↓
+              AI Summary / Reporting
+
+============================================================================================
+Question. UserApiClient, TestContext, ExecutionDataCollector & ExecutionResult - Explain their role in this framework.
+
+ElementActions/UserApiClient	-	execution-layer components for UI and API respectively. 
+									Both feed execution context into the common TestContext
+TestContext 					-	temporarily holds execution-specific information for the current thread.
+ExecutionDataCollector 			-	converts that context into our framework's common ExecutionResult.
+ExecutionResult 				-	becomes the common data model consumed by the AI pipeline.
+	
+	
+	                 ┌── UI ──→ ElementActions ──┐
+	Test Execution ──┤                            ├──→ TestContext
+	                 └── API ─→ UserApiClient ────┘
+	                                               ↓
+	                                    ExecutionDataCollector
+	                                               ↓
+	                                      ExecutionResult
+	                                               ↓
+	                                    ExecutionStore
+	                                               ↓
+	                              Failure Analysis / Summary
+	                                               ↓
+	                                               AI
+
+============================================================================================
+Question. What is the role of AIClientFactory?
+
+AIClientFactory resolves which AIClient implementation should be used for AI-powered operations based on execution.summary.provider
+like GEMINI or FAKE (for debugging purpose to save Gemini quota)
+
+		config.properties
+		      │
+		      ▼
+		ConfigManager
+		      │
+		      ▼
+		AIClientFactory
+		      │
+		      ├── fake ────► FakeAIClient
+		      │
+		      └── gemini ──► GeminiAIClient
+		                         │
+		                         ▼
+		                      Gemini API
+
+Meanwhile, FailureAnalyzerFactory is responsible for the separate failure.analysis.strategy decision.
+
+============================================================================================
+Question. Why use two configs : failure.analysis.strategy and execution.summary.provider
+
+Failure Analysis and Execution Summary are two independent capabilities with different responsibilities 
+and potentially different implementation strategies.
+
+failure.analysis.strategy controls how an individual test failure is diagnosed — 
+	for example, deterministic RULE_BASED analysis or AI-powered GEMINI analysis.
+execution.summary.provider controls which AI client generates the overall execution summary — 
+	for example, GEMINI, FAKE, or potentially another AI provider in the future.
+
+Keeping them separate allows the framework to support:
+	1. Deterministic analysis — Rule-based failure analysis + AI execution summary
+	2. AI-powered analysis — Gemini failure analysis + Gemini execution summary
+	3. Hybrid analysis — Rule-based failure analysis + another AI provider for execution summary
+	4. Independent evolution — we can change or add strategies/providers to one capability without affecting the other.
+
+The configurations are separate because the framework should configure capabilities independently, 
+rather than assuming that every AI feature must use the same implementation or provider.
+
+============================================================================================
 

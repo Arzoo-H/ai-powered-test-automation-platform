@@ -58,6 +58,22 @@ public class ExecutionDataCollector {
 			if (testContext.getLastElementDiagnostics() != null) {
 				executionResult.setElementDiagnostics(testContext.getLastElementDiagnostics());
 			}
+			
+			if (testContext.getApiMethod() != null) {
+			    executionResult.setApiMethod(testContext.getApiMethod());
+			}
+
+			if (testContext.getApiEndpoint() != null) {
+			    executionResult.setApiEndpoint(testContext.getApiEndpoint());
+			}
+
+			if (testContext.getApiStatusCode() != null) {
+			    executionResult.setApiStatusCode(testContext.getApiStatusCode());
+			}
+
+			if (testContext.getApiResponseTime() != null) {
+			    executionResult.setApiResponseTime(testContext.getApiResponseTime());
+			}
 		}
 
 		if (DriverFactory.getDriver() != null) {

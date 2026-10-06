@@ -21,17 +21,25 @@ public class FailureAnalysisRunner {
 
     public List<ExecutionResult> analyzeFailures(List<ExecutionResult> executionResults) {
 
-    	/*
-		 * Each ExecutionResult represents one execution attempt. Grouping by
-		 * invocationId allows us to treat retries as one logical test.
-		 * 
-		 * invocationId becomes the key 
-		 * and corresponding individual execution becomes list of ExecutionResult
-		 * so, if one testcase ran twice due to retry logic, then there will be two ExecutionResult logged against one invocationId
-		 */
+		log.info("Starting failure analysis | Execution results: {}", executionResults.size());
+		
+        /*
+         * Each ExecutionResult represents one execution attempt. Grouping by
+         * invocationId allows us to treat retries as one logical test.
+         *
+         * invocationId becomes the key, and the corresponding execution attempts
+         * become a List<ExecutionResult>.
+         *
+         * For example, if one test case runs twice due to retry logic,
+         * there will be two ExecutionResult objects under one invocationId.
+         */
 		Map<String, List<ExecutionResult>> groupedResults = executionResults.stream()
 																			.collect(Collectors.groupingBy(ExecutionResult::getInvocationId));
 
+		log.info("Failure analysis candidates | Logical tests: {}", groupedResults.size());
+		
+		int analysesGenerated = 0;
+		
 		for (List<ExecutionResult> attempts : groupedResults.values()) {
 
 			/*
@@ -50,18 +58,22 @@ public class FailureAnalysisRunner {
 				continue;
 			}
 
-			if ("FAILED".equals(finalAttempt.getStatus())) { // if a failure is found in the ExecutionResult
+			if ("FAILED".equals(finalAttempt.getStatus())) { // checking whether the final attempt failed
 
 				try {
 					FailureAnalysis analysis = failureAnalyzer.analyze(finalAttempt);
 
 					finalAttempt.setFailureAnalysis(analysis);
+					analysesGenerated++;
 
 				} catch (Exception e) {
 					log.error("AI failure analysis failed for test: {}", finalAttempt.getTestName(), e);
 				}
 			}
 		}
+		
+		 // Log completion only after all logical tests have been processed
+		log.info("Failure analysis completed | Analyses generated: {}", analysesGenerated);
         return executionResults;
     }
 }

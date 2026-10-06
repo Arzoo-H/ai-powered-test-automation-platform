@@ -95,7 +95,11 @@ public class ConfigManager {
 	    return properties.getProperty("gemini.model");
 	}
 	
-	public String getAIFailureAnalyzer() {
-	    return properties.getProperty("ai.failure.analyzer");
+	public String getFailureAnalysisStrategy() {
+	    return properties.getProperty("failure.analysis.strategy");
+	}
+	
+	public String getExecutionSummaryProvider() {
+	    return properties.getProperty("execution.summary.provider");
 	}
 }

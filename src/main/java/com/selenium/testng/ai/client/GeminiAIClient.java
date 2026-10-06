@@ -25,6 +25,8 @@ public class GeminiAIClient implements AIClient {
 	@Override
 	public String generate(String prompt) {
 
+	    long startTime = System.currentTimeMillis();
+
 		try {
 			
 			ConfigManager config = ConfigManager.getInstance();
@@ -33,19 +35,26 @@ public class GeminiAIClient implements AIClient {
 			String model = config.getGeminiModel();
 			String endpoint = baseUrl + "/models/" + model + ":generateContent";
 
-//			String requestBody = """
-//					{
-//					  "contents": [
-//					    {
-//					      "parts": [
-//					        {
-//					          "text": "%s"
-//					        }
-//					      ]
-//					    }
-//					  ]
-//					}
-//					""".formatted(prompt.replace("\"", "\\\""));
+			
+	        log.info("Gemini request started | Model: {}", model);
+	        
+	        
+	        /*
+	         * String requestBody = """
+	         * 					{
+	         * 					  "contents": [
+	         * 					    {
+	         * 					      "parts": [
+	         * 					        {
+	         * 					          "text": "%s"
+	         * 					        }
+	         * 					      ]
+	         * 					    }
+	         * 					  ]
+	         * 
+	         * 					}
+	         * 					""".formatted(prompt.replace("\"", "\\\""));
+	         */
 			
 			JsonObject requestJson = new JsonObject(); // {
 			JsonArray contents = new JsonArray(); // "contents": [
@@ -62,7 +71,6 @@ public class GeminiAIClient implements AIClient {
 
 			String requestBody = requestJson.toString();
 
-			
 			HttpRequest request = HttpRequest.newBuilder()
 					.uri(URI.create(endpoint))
 					.header("Content-Type", "application/json")
@@ -72,31 +80,39 @@ public class GeminiAIClient implements AIClient {
 			
 			HttpClient client = HttpClient.newHttpClient();
 			HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+			
+	        long duration = System.currentTimeMillis() - startTime;
+			log.info("Gemini response received | Status: {} | Duration: {} ms", response.statusCode(), duration);
+			
 			if (response.statusCode() < 200 || response.statusCode() >= 300) {
-			    throw new RuntimeException(
-			        "Gemini API request failed. HTTP Status: " + response.statusCode()
-			        + ", Response: " + response.body());
+				
+				log.error("Gemini API request failed | Status: {}", response.statusCode());
+				
+			    throw new RuntimeException("Gemini API request failed. HTTP Status: " + response.statusCode()
+			        						+ ", Response: " + response.body());
 			}
 			log.info("Gemini HTTP Status: {}", response.statusCode());
-			log.info("Gemini Response: {}", response.body());
 
-			// Parse the response
-			/*
-			 * Response would be of format
-			 	{
-				  "candidates": [
-				    {
-				      "content": {
-				        "parts": [
-				          {
-				            "text": "..."
-				          }
-				        ]
-				      }
-				    }
-				  ]
-				}
-			 */
+	        /*
+	         * Parse the response
+	         *
+	         * Response format:
+	         *
+	         * {
+	         *   "candidates": [
+	         *     {
+	         *       "content": {
+	         *         "parts": [
+	         *           {
+	         *             "text": "..."
+	         *           }
+	         *         ]
+	         *       }
+	         *     }
+	         *   ]
+	         * }
+	         */
+			
 			JsonObject responseJson = JsonParser.parseString(response.body()).getAsJsonObject();
 
 			JsonArray candidates = responseJson.getAsJsonArray("candidates");
@@ -118,10 +134,15 @@ public class GeminiAIClient implements AIClient {
 			if (text.endsWith("```")) {
 			    text = text.substring(0, text.length() - 3);
 			}
+			
+			log.info("Gemini response parsed successfully");
 
 			return text.trim();
 
 		} catch (Exception e) {
+			
+	        log.error("Gemini API call failed", e);
+
 			throw new RuntimeException("Failed to call Gemini API", e);
 		}
 	}

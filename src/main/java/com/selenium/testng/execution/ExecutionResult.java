@@ -21,6 +21,10 @@ public class ExecutionResult {
 	private FailureAnalysis failureAnalysis;
 	private boolean retryScheduled;
 	private String invocationId;
+	private String apiMethod;
+	private String apiEndpoint;
+	private Integer apiStatusCode;
+	private Long apiResponseTime;
 
 	public String getTestName() {
 		return testName;
@@ -155,5 +159,37 @@ public class ExecutionResult {
 
 	public void setInvocationId(String invocationId) {
 	    this.invocationId = invocationId;
+	}
+	
+	public String getApiMethod() {
+		return apiMethod;
+	}
+
+	public void setApiMethod(String apiMethod) {
+		this.apiMethod = apiMethod;
+	}
+
+	public String getApiEndpoint() {
+		return apiEndpoint;
+	}
+
+	public void setApiEndpoint(String apiEndpoint) {
+		this.apiEndpoint = apiEndpoint;
+	}
+
+	public Integer getApiStatusCode() {
+		return apiStatusCode;
+	}
+
+	public void setApiStatusCode(Integer apiStatusCode) {
+		this.apiStatusCode = apiStatusCode;
+	}
+
+	public Long getApiResponseTime() {
+		return apiResponseTime;
+	}
+
+	public void setApiResponseTime(Long apiResponseTime) {
+		this.apiResponseTime = apiResponseTime;
 	}
 }

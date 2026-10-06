@@ -13,7 +13,7 @@ public class FailureAnalyzerFactory {
 
 	public static FailureAnalyzer create() {
 
-		String analyzerType = ConfigManager.getInstance().getAIFailureAnalyzer();
+		String analyzerType = ConfigManager.getInstance().getFailureAnalysisStrategy();
 
 		if ("GEMINI".equalsIgnoreCase(analyzerType)) {
 

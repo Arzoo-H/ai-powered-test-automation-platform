@@ -11,29 +11,36 @@ import io.restassured.response.Response;
 public class UserApiTest extends BaseApiTest {
 	
     private final UserApiClient userApi = new UserApiClient();
-
+    private int attemptCount = 0;
+    
 	@Test(groups = { "api-smoke" })
-	public void verifyUserExists() {
+	public void verifyUserExists_withRetryRecovery() {
+		
+		attemptCount++;
 
+		if (attemptCount == 1) {
+		    AssertionUtils.assertTrue(false, "Intentional failure for retry verification");
+		}
+		
 		Response response = userApi.getUser(2);
-
+		
 		AssertionUtils.assertStatusCode(response, 
-										200, 
-										"Verified status code is 200");
-
+				200, 
+				"Verified status code is 200");
+		
 		AssertionUtils.assertJsonPathEquals(response, 
-											"data.first_name", 
-											"Janet", 
-											"Verified first name is Janet");
-
+				"data.first_name", 
+				"Janet", 
+				"Verified first name is Janet");
+		
 		AssertionUtils.assertResponseTimeLessThan(response, 
-													2000, 
-													"Verified response time is less than 2 seconds");
-
+				2000, 
+				"Verified response time is less than 2 seconds");
+		
 		AssertionUtils.assertJsonPathNotNull(response, 
-												"data.email", 
-												"Verified email is present");
-
+				"data.email", 
+				"Verified email is present");
+		
 	}
 	
 	@Test(groups = { "api-smoke" })
