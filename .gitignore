@@ -5,6 +5,7 @@
 /logs/
 /reports/
 /screenshots/
+/test-output/
 
 # IDE
 .classpath
