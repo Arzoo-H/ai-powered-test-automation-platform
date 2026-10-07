@@ -195,6 +195,21 @@ The framework separates listener responsibilities by lifecycle scope:
 
 ---
 
+## 🔑 ReqRes API Key Setup
+
+The API tests use [ReqRes](https://reqres.in/) for test data.
+
+1. Create a ReqRes account and sign in to the ReqRes dashboard.
+2. Create an API key for your project.
+3. Add the key to your local `src/test/resources/config.properties`:
+
+```properties
+qa.api.key=YOUR_REQRES_API_KEY
+```
+
+> **Important:** Never commit your actual API key to GitHub. The repository contains only a placeholder value.
+
+
 ## 🔌 AI Provider Configuration
 
 AI capabilities are configurable independently.
